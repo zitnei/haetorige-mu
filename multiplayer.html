@@ -1,0 +1,461 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>スーパー・ハエ取り マルチ対戦</title>
+<style>
+*{box-sizing:border-box}
+body{
+  margin:0; min-height:100vh; min-height:100dvh; display:grid; place-items:center;
+  font-family:system-ui,-apple-system,"Noto Sans JP",sans-serif;
+  background:linear-gradient(#dff7ff,#f6fff1); color:#18344f;
+  padding:10px;
+}
+.wrap{width:min(1000px,96vw)}
+@media(max-width:480px){body{padding:6px}}
+
+.panel{
+  background:#fff;border:2px solid #b9e6f5;border-radius:14px;padding:14px;
+  box-shadow:0 5px 14px #2f7e9d18;margin-bottom:10px;
+}
+h1{font-size:20px;margin:0 0 4px;text-align:center}
+.sub{text-align:center;font-size:13px;opacity:.7;margin-bottom:14px}
+
+/* ---- Lobby screens ---- */
+.lobby-row{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+.lobby-card{
+  flex:1;min-width:240px;background:#f9fdff;border:2px solid #b9e6f5;border-radius:12px;
+  padding:16px;text-align:center;
+}
+.lobby-card h2{font-size:15px;margin:0 0 10px}
+input[type=text]{
+  width:100%;padding:10px;border:2px solid #b9e6f5;border-radius:10px;font-weight:800;
+  font-size:15px;box-sizing:border-box;text-align:center;
+}
+.btn{
+  border:0;border-radius:12px;background:#ffd45a;font-weight:1000;font-size:15px;
+  cursor:pointer;box-shadow:0 4px 0 #d6a927;padding:12px 18px;margin-top:10px;width:100%;
+}
+.btn:active{transform:translateY(2px);box-shadow:0 2px 0 #d6a927}
+.btn.secondary{background:#f9fdff;border:2px solid #b9e6f5;box-shadow:0 4px 0 #b9e6f5}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+#connError{color:#d1416a;font-weight:800;font-size:13px;text-align:center;min-height:18px}
+
+/* ---- Room screen ---- */
+.room-code{
+  font-size:32px;font-weight:1000;letter-spacing:.12em;text-align:center;
+  background:#fff8e1;border:3px dashed #f0b400;border-radius:14px;padding:10px;margin-bottom:10px;
+}
+.player-list{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:10px}
+.player-chip{
+  background:#f9fdff;border:2px solid #b9e6f5;border-radius:999px;padding:6px 14px;font-weight:900;font-size:13px;
+}
+.player-chip.host::before{content:"👑 "}
+.player-chip.disconnected{opacity:.4;text-decoration:line-through}
+
+/* ---- HUD ---- */
+.hud{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px}
+@media(max-width:600px){.hud{grid-template-columns:repeat(2,1fr)}}
+.hud .stat{background:#fff;border:2px solid #b9e6f5;border-radius:14px;padding:8px 10px;text-align:center;font-weight:900}
+.hud .label{display:block;font-size:11px;opacity:.65}
+.hud .value{font-size:21px}
+
+.layout{display:grid;grid-template-columns:1fr 220px;gap:10px}
+@media(max-width:760px){.layout{grid-template-columns:1fr}}
+
+#field{
+  position:relative;width:100%;height:min(62vh,560px);min-height:380px;overflow:hidden;
+  border:4px solid #86d9f1;border-radius:24px;
+  background:
+    radial-gradient(circle at 12% 13%,#fff 0 4%,transparent 4.5%),
+    radial-gradient(circle at 72% 22%,#fff 0 3%,transparent 3.5%),
+    linear-gradient(#dff7ff 0 64%,#c9efa3 64% 100%);
+  box-shadow:0 14px 30px #357a9d24; cursor:crosshair; touch-action:manipulation;
+}
+.fly{
+  position:absolute;width:88px;object-fit:contain;user-select:none;-webkit-user-drag:none;
+  filter:drop-shadow(0 5px 4px #0002);cursor:pointer;
+}
+.fly.normal{width:100px}
+.fly.golden{width:86px;filter:drop-shadow(0 0 10px #ffd700) saturate(1.8) sepia(.35)}
+.fly.decoy{width:80px;opacity:.72;filter:grayscale(.8) contrast(1.1) drop-shadow(0 4px 3px #0002)}
+.fly.ice{width:90px;filter:drop-shadow(0 0 8px #6fd8ff) saturate(1.3) hue-rotate(150deg) brightness(1.15)}
+.fly.bomb{width:92px;filter:drop-shadow(0 0 8px #ff5a5a) saturate(1.4) hue-rotate(-40deg) brightness(.95)}
+.fly.claimed{animation:claimedPop .25s ease-out forwards;pointer-events:none}
+@keyframes claimedPop{to{transform:scale(1.4);opacity:0}}
+
+#msg{position:absolute;inset:0;display:grid;place-items:center;text-align:center;pointer-events:none;font-weight:1000;font-size:clamp(22px,4.5vw,44px);text-shadow:0 3px #fff;padding:12px}
+#toastLayer{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+.toast{
+  position:absolute;font-weight:1000;font-size:15px;opacity:0;
+  animation:toastPop 1s ease-out forwards;text-shadow:0 2px #fff;white-space:nowrap;
+}
+@keyframes toastPop{0%{opacity:0;transform:translateY(0) scale(.7)}20%{opacity:1}100%{opacity:0;transform:translateY(-50px) scale(1.1)}}
+
+.scoreboard{background:#fff;border:2px solid #b9e6f5;border-radius:14px;padding:10px;max-height:min(62vh,560px);overflow-y:auto}
+.scoreboard h3{font-size:14px;margin:0 0 8px;text-align:center}
+.sb-row{
+  display:flex;justify-content:space-between;align-items:center;gap:6px;
+  padding:6px 8px;border-radius:8px;font-weight:800;font-size:13px;margin-bottom:4px;
+}
+.sb-row.me{background:#fff8e1;border:1.5px solid #f0b400}
+.sb-row .rank{opacity:.5;width:1.4em;flex-shrink:0}
+.sb-row .name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sb-row .score{font-variant-numeric:tabular-nums}
+.sb-row.dead{opacity:.4}
+.sb-row.dead .name::after{content:" 💀"}
+
+.help{font-size:12.5px;opacity:.72;text-align:center;margin-top:8px}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🪰 スーパー・ハエ取り マルチ対戦</h1>
+  <div class="sub">みんなで同じフィールドのハエを取り合う、20人までのリアルタイム早取り対戦</div>
+  <div style="text-align:center;margin:-8px 0 16px">
+    <a href="index.html" style="display:inline-block;text-decoration:none;color:#3a6a8a;font-weight:900;font-size:13px;opacity:.85">← ソロプレイに戻る</a>
+  </div>
+
+  <!-- Connection status -->
+  <div id="connError"></div>
+
+  <!-- ===== Lobby: choose create or join ===== -->
+  <div id="lobbyScreen">
+    <div class="lobby-row">
+      <div class="lobby-card">
+        <h2>🏠 部屋を作る</h2>
+        <input type="text" id="createNameInput" maxlength="16" placeholder="あなたの名前">
+        <button class="btn" id="createRoomBtn">部屋を作成</button>
+      </div>
+      <div class="lobby-card">
+        <h2>🔑 部屋に入る</h2>
+        <input type="text" id="joinCodeInput" maxlength="6" placeholder="部屋コード (例: AB12CD)" style="text-transform:uppercase">
+        <input type="text" id="joinNameInput" maxlength="16" placeholder="あなたの名前" style="margin-top:8px">
+        <button class="btn secondary" id="joinRoomBtn">参加する</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== Waiting room ===== -->
+  <div id="waitingScreen" hidden>
+    <div class="panel">
+      <div class="sub" style="margin-bottom:4px">この部屋コードを友達に共有しよう</div>
+      <div class="room-code" id="roomCodeDisplay">------</div>
+      <div id="playerListWaiting" class="player-list"></div>
+      <button class="btn" id="startRoundBtn" hidden>ゲーム開始（ホストのみ）</button>
+      <div class="sub" id="waitingHint" style="margin-top:10px">ホストが開始するのを待っています…</div>
+    </div>
+  </div>
+
+  <!-- ===== Playing screen ===== -->
+  <div id="playScreen" hidden>
+    <div class="hud">
+      <div class="stat"><span class="label">のこり</span><span class="value" id="timeLeftEl">35</span>秒</div>
+      <div class="stat"><span class="label">スコア</span><span class="value" id="myScoreEl">0</span></div>
+      <div class="stat"><span class="label">ライフ</span><span class="value" id="myLivesEl">❤️❤️❤️</span></div>
+    </div>
+    <div class="layout">
+      <div id="field">
+        <div id="msg"></div>
+        <div id="toastLayer"></div>
+      </div>
+      <div class="scoreboard">
+        <h3>🏆 現在の順位</h3>
+        <div id="scoreboardList"></div>
+      </div>
+    </div>
+    <div class="help">通常ハエ +1 / 金ハエ +5 / ニセモノを押すとライフ減少 / ❄️氷ハエ・💣爆弾ハエもあり。早い者勝ち！</div>
+  </div>
+
+  <!-- ===== Result screen ===== -->
+  <div id="resultScreen" hidden>
+    <div class="panel">
+      <h2 style="text-align:center;font-size:18px">🎉 ラウンド終了！</h2>
+      <div id="finalScoreboard" class="player-list" style="flex-direction:column;align-items:stretch"></div>
+      <button class="btn" id="playAgainBtn" hidden>もう一度対戦（ホストのみ）</button>
+      <div class="sub" id="resultHint" style="margin-top:10px">ホストが次のラウンドを始めるのを待っています…</div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// 接続先WebSocketサーバーのURL。
+// VPSにデプロイしたら、この1行をご自身の環境に合わせて書き換えてください。
+// 例: 'wss://your-domain.example.com'（HTTPS化した場合。推奨）
+//     'ws://123.45.67.89:8080'（暗号化なし・検証用途向け）
+// ============================================================
+const WS_URL = 'wss://YOUR-VPS-DOMAIN-HERE.example.com';
+
+const IMG = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cellipse cx='50' cy='55' rx='22' ry='28' fill='%236b4a35'/%3E%3Ccircle cx='38' cy='30' r='12' fill='%236b4a35'/%3E%3Ccircle cx='62' cy='30' r='12' fill='%236b4a35'/%3E%3Cellipse cx='25' cy='45' rx='18' ry='10' fill='%23bfe8f5' opacity='.8' transform='rotate(-20 25 45)'/%3E%3Cellipse cx='75' cy='45' rx='18' ry='10' fill='%23bfe8f5' opacity='.8' transform='rotate(20 75 45)'/%3E%3Ccircle cx='33' cy='27' r='4' fill='%23fff'/%3E%3Ccircle cx='67' cy='27' r='4' fill='%23fff'/%3E%3Ccircle cx='33' cy='27' r='2' fill='%23111'/%3E%3Ccircle cx='67' cy='27' r='2' fill='%23111'/%3E%3C/svg%3E";
+
+let ws = null;
+let myPlayerId = null;
+let myRoomCode = null;
+let iAmHost = false;
+let myScore = 0, myLives = 3;
+const flyEls = new Map(); // flyId -> element
+
+const $ = (id) => document.getElementById(id);
+const lobbyScreen = $('lobbyScreen');
+const waitingScreen = $('waitingScreen');
+const playScreen = $('playScreen');
+const resultScreen = $('resultScreen');
+const connErrorEl = $('connError');
+
+function showScreen(name) {
+  lobbyScreen.hidden = name !== 'lobby';
+  waitingScreen.hidden = name !== 'waiting';
+  playScreen.hidden = name !== 'playing';
+  resultScreen.hidden = name !== 'result';
+}
+
+function ensureSocket() {
+  if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return ws;
+  connErrorEl.textContent = '';
+  ws = new WebSocket(WS_URL);
+  ws.addEventListener('open', () => { connErrorEl.textContent = ''; });
+  ws.addEventListener('error', () => {
+    connErrorEl.textContent = 'サーバーに接続できませんでした。しばらくしてからもう一度お試しください。';
+  });
+  ws.addEventListener('close', () => {
+    if (!resultScreen.hidden || !playScreen.hidden) {
+      connErrorEl.textContent = 'サーバーとの接続が切れました。ページを再読み込みしてください。';
+    }
+  });
+  ws.addEventListener('message', (ev) => {
+    let msg;
+    try { msg = JSON.parse(ev.data); } catch (e) { return; }
+    handleMessage(msg);
+  });
+  return ws;
+}
+
+function send(obj) {
+  if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
+}
+
+// ---- Lobby actions ----
+$('createRoomBtn').addEventListener('click', () => {
+  const name = $('createNameInput').value.trim() || '名無し';
+  ensureSocket();
+  const s = ensureSocket();
+  const doSend = () => send({ type: 'create_room', name });
+  if (s.readyState === WebSocket.OPEN) doSend();
+  else s.addEventListener('open', doSend, { once: true });
+});
+
+$('joinRoomBtn').addEventListener('click', () => {
+  const code = $('joinCodeInput').value.trim().toUpperCase();
+  const name = $('joinNameInput').value.trim() || '名無し';
+  if (!code) { connErrorEl.textContent = '部屋コードを入力してください'; return; }
+  const s = ensureSocket();
+  const doSend = () => send({ type: 'join_room', roomCode: code, name });
+  if (s.readyState === WebSocket.OPEN) doSend();
+  else s.addEventListener('open', doSend, { once: true });
+});
+
+$('startRoundBtn').addEventListener('click', () => send({ type: 'start_round' }));
+$('playAgainBtn').addEventListener('click', () => send({ type: 'start_round' }));
+
+// ---- Field click handling ----
+const field = $('field');
+field.addEventListener('pointerdown', (e) => {
+  if (e.target === field) send({ type: 'miss_click' });
+});
+
+function spawnToast(text, xPct, yPct) {
+  const layer = $('toastLayer');
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.textContent = text;
+  el.style.left = (xPct * 100) + '%';
+  el.style.top = (yPct * 100) + '%';
+  layer.appendChild(el);
+  setTimeout(() => el.remove(), 1000);
+}
+
+function renderFly(fly) {
+  const el = document.createElement('img');
+  el.src = IMG;
+  el.draggable = false;
+  el.className = 'fly ' + fly.type;
+  el.style.left = (fly.x * 100) + '%';
+  el.style.top = (fly.y * 100) + '%';
+  el.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    send({ type: 'hit_fly', flyId: fly.id });
+  });
+  field.appendChild(el);
+  flyEls.set(fly.id, el);
+}
+
+function removeFly(id, claimed) {
+  const el = flyEls.get(id);
+  if (!el) return;
+  flyEls.delete(id);
+  if (claimed) {
+    el.classList.add('claimed');
+    setTimeout(() => el.remove(), 260);
+  } else {
+    el.remove();
+  }
+}
+
+function renderPlayerListWaiting(players) {
+  const list = $('playerListWaiting');
+  list.innerHTML = '';
+  players.forEach((p) => {
+    const chip = document.createElement('span');
+    chip.className = 'player-chip' + (p.id === currentHostId ? ' host' : '') + (!p.connected ? ' disconnected' : '');
+    chip.textContent = p.name;
+    list.appendChild(chip);
+  });
+}
+
+let currentHostId = null;
+
+function renderScoreboard(players, targetEl, isFinal) {
+  targetEl.innerHTML = '';
+  players.forEach((p, i) => {
+    const row = document.createElement('div');
+    row.className = 'sb-row' + (p.id === myPlayerId ? ' me' : '') + (p.lives <= 0 ? ' dead' : '');
+    const rank = document.createElement('span');
+    rank.className = 'rank';
+    rank.textContent = (i + 1) + '.';
+    const name = document.createElement('span');
+    name.className = 'name';
+    name.textContent = p.name;
+    const score = document.createElement('span');
+    score.className = 'score';
+    score.textContent = p.score + '点';
+    row.appendChild(rank);
+    row.appendChild(name);
+    row.appendChild(score);
+    targetEl.appendChild(row);
+  });
+  if (isFinal) {
+    // add crown to top scorer
+    const first = targetEl.firstChild;
+    if (first) {
+      const nameSpan = first.querySelector('.name');
+      if (nameSpan) nameSpan.textContent = '🥇 ' + nameSpan.textContent;
+    }
+  }
+}
+
+function updateMyHud(players) {
+  const me = players.find((p) => p.id === myPlayerId);
+  if (!me) return;
+  myScore = me.score;
+  myLives = me.lives;
+  $('myScoreEl').textContent = myScore;
+  $('myLivesEl').textContent = '❤️'.repeat(Math.max(0, myLives)) + '🖤'.repeat(Math.max(0, 3 - myLives));
+}
+
+function handleMessage(msg) {
+  switch (msg.type) {
+    case 'joined': {
+      myPlayerId = msg.playerId;
+      myRoomCode = msg.roomCode;
+      iAmHost = msg.isHost;
+      $('roomCodeDisplay').textContent = msg.roomCode;
+      showScreen('waiting');
+      $('startRoundBtn').hidden = !iAmHost;
+      $('waitingHint').hidden = iAmHost;
+      break;
+    }
+    case 'host_transferred': {
+      iAmHost = true;
+      $('startRoundBtn').hidden = false;
+      $('waitingHint').hidden = true;
+      break;
+    }
+    case 'error': {
+      connErrorEl.textContent = msg.message || 'エラーが発生しました';
+      break;
+    }
+    case 'room_state': {
+      currentHostId = msg.hostId;
+      if (msg.hostId === myPlayerId && !iAmHost) {
+        iAmHost = true;
+      }
+      if (waitingScreen.hidden === false || lobbyScreen.hidden === false) {
+        // still in lobby/waiting flow
+      }
+      if (msg.state === 'waiting') {
+        showScreen('waiting');
+        renderPlayerListWaiting(msg.players);
+        $('startRoundBtn').hidden = !iAmHost;
+        $('waitingHint').hidden = iAmHost;
+      }
+      break;
+    }
+    case 'round_start': {
+      showScreen('playing');
+      $('msg').textContent = '';
+      $('timeLeftEl').textContent = msg.timeLeft;
+      flyEls.forEach((el) => el.remove());
+      flyEls.clear();
+      myScore = 0; myLives = 3;
+      $('myScoreEl').textContent = 0;
+      $('myLivesEl').textContent = '❤️❤️❤️';
+      break;
+    }
+    case 'tick': {
+      $('timeLeftEl').textContent = msg.timeLeft;
+      updateMyHud(msg.players);
+      renderScoreboard(msg.players, $('scoreboardList'), false);
+      break;
+    }
+    case 'fly_spawn': {
+      renderFly(msg.fly);
+      break;
+    }
+    case 'fly_expire': {
+      removeFly(msg.id, false);
+      break;
+    }
+    case 'fly_result': {
+      const el = flyEls.get(msg.id);
+      let xPct = 0.5, yPct = 0.5;
+      if (el) {
+        xPct = parseFloat(el.style.left) / 100;
+        yPct = parseFloat(el.style.top) / 100;
+      }
+      removeFly(msg.id, true);
+      if (msg.by === myPlayerId) {
+        if (msg.result === 'decoy') {
+          spawnToast('ニセモノ！ -❤️', xPct, yPct);
+        } else {
+          spawnToast('+' + msg.gained, xPct, yPct);
+          myScore = msg.score;
+          $('myScoreEl').textContent = myScore;
+        }
+      }
+      break;
+    }
+    case 'scoreboard': {
+      updateMyHud(msg.players);
+      renderScoreboard(msg.players, $('scoreboardList'), false);
+      break;
+    }
+    case 'eliminated': {
+      spawnToast('ライフが尽きました…観戦モード', 0.5, 0.5);
+      break;
+    }
+    case 'round_end': {
+      showScreen('result');
+      renderScoreboard(msg.players, $('finalScoreboard'), true);
+      $('playAgainBtn').hidden = !iAmHost;
+      $('resultHint').hidden = iAmHost;
+      break;
+    }
+  }
+}
+</script>
+</body>
+</html>
