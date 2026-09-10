@@ -488,16 +488,20 @@ function startRound(room) {
 // 「全員で叩け！！」の全員総攻撃フェーズに入る。
 const BOSS_PRESETS = {
   raid: {
-    totalHp: 300,
+    totalHp: 10000,
     parts: {
-      wingL: { label: '左翼', hp: 30, maxHp: 30 },
-      wingR: { label: '右翼', hp: 30, maxHp: 30 },
-      head: { label: '頭', hp: 50, maxHp: 50 },
-      tail: { label: '尻尾', hp: 40, maxHp: 40 },
+      wingL: { label: '左翼', hp: 1000, maxHp: 1000 },
+      wingR: { label: '右翼', hp: 1000, maxHp: 1000 },
+      head: { label: '頭', hp: 1700, maxHp: 1700 },
+      tail: { label: '尻尾', hp: 1300, maxHp: 1300 },
     },
     simulHitsNeeded: 3, // 各部位を同時攻撃するのに必要な人数（20人未満でも遊べるよう控えめ）
     simulWindowMs: 2500, // この時間内に集まった同時攻撃をカウント
     allOutDurationMs: 8000,
+    moveIntervalMs: [900, 1600], // 激しく動き回る：この範囲でランダムに移動間隔を決める
+    moveRadius: 0.32, // 1回の移動でどれだけ大きく飛び回るか（正規化座標）
+    chargeChance: 0.35, // まれに素早い突進（チャージ）move演出になる確率
+    damageMult: 12, // HP10000に合わせて1発あたりのダメージを引き上げる倍率
   },
   giant: {
     totalHp: 1000,
@@ -510,6 +514,9 @@ const BOSS_PRESETS = {
     simulHitsNeeded: 5, // 「20人で同時に叩く」を再現しつつ20人未満でも成立する人数
     simulWindowMs: 3000,
     allOutDurationMs: 10000,
+    moveIntervalMs: [1800, 3200],
+    moveRadius: 0.18,
+    chargeChance: 0.15,
   },
 };
 
@@ -569,6 +576,29 @@ function startRaidBoss(room) {
   room.boss = makeBossState(room);
   broadcast(room, { type: 'boss_spawn', boss: publicBossState(room) });
   scheduleBossAttack(room);
+  scheduleBossMovement(room);
+}
+
+// ボスがフィールド内を激しく動き回る演出：一定間隔でランダムな位置へジャンプ／突進する。
+// ダウン中（全員総攻撃フェーズ）は動きを止めて、狙いやすくする。
+function scheduleBossMovement(room) {
+  if (room.state !== 'playing' || (room.mode !== 'raid' && room.mode !== 'giant') || !room.boss) return;
+  const preset = bossPreset(room);
+  const [minMs, maxMs] = preset.moveIntervalMs || [1500, 2500];
+  room.bossMoveTimer = setTimeout(() => {
+    if (room.state !== 'playing' || !room.boss || room.boss.hp <= 0) return;
+    if (!room.boss.down) {
+      const boss = room.boss;
+      const isCharge = Math.random() < (preset.chargeChance || 0.2);
+      const radius = preset.moveRadius || 0.25;
+      const nx = Math.max(0.08, Math.min(0.92, boss.x + (Math.random() - 0.5) * radius * 2));
+      const ny = Math.max(0.08, Math.min(0.62, boss.y + (Math.random() - 0.5) * radius * 2));
+      boss.x = nx;
+      boss.y = ny;
+      broadcast(room, { type: 'boss_move', x: nx, y: ny, charge: isCharge });
+    }
+    scheduleBossMovement(room);
+  }, minMs + Math.random() * (maxMs - minMs));
 }
 
 function scheduleBossAttack(room) {
@@ -618,7 +648,7 @@ function handleBossHit(room, playerId, targetPart) {
 
   const weakSpotActive = boss.grounded && Date.now() < boss.weakSpotUntil;
   const allOutActive = boss.down && Date.now() < boss.allOutUntil;
-  let damage = 3 + Math.floor(Math.random() * 4); // 基礎ダメージ
+  let damage = (3 + Math.floor(Math.random() * 4)) * (preset.damageMult || 1); // 基礎ダメージ（モードごとに倍率調整）
   let brokeNow = null;
   let simulTriggered = false;
 
@@ -655,7 +685,7 @@ function handleBossHit(room, playerId, targetPart) {
       part.hp = 0;
       part.broken = true;
       brokeNow = targetPart;
-      damage += simulTriggered ? 25 : 10; // 同時叩き達成は大ボーナス
+      damage += (simulTriggered ? 25 : 10) * (preset.damageMult || 1); // 同時叩き達成は大ボーナス
       clearTimeout(part.simulWindowTimer);
       part.simulWindowTimer = null;
       part.simulHits.clear();
@@ -691,6 +721,7 @@ function handleBossHit(room, playerId, targetPart) {
   if (boss.hp <= 0) {
     clearTimeout(room.bossAttackTimer);
     clearTimeout(room.bossDownRecoverTimer);
+    clearTimeout(room.bossMoveTimer);
     broadcast(room, { type: 'boss_defeated', players: publicPlayerList(room) });
     setTimeout(() => endRound(room), 1500);
   }
@@ -885,6 +916,7 @@ function endRound(room) {
   clearTimeout(room.teamComboDecayTimer);
   clearTimeout(room.bossAttackTimer);
   clearTimeout(room.bossDownRecoverTimer);
+  clearTimeout(room.bossMoveTimer);
   clearTimeout(room.hunterTimer);
   if (room.boss) {
     for (const p of Object.values(room.boss.parts)) clearTimeout(p.simulWindowTimer);

@@ -201,7 +201,9 @@ input[type=text]{
   position:absolute;width:140px;height:140px;left:50%;top:30%;transform:translate(-50%,-50%);
   display:grid;place-items:center;font-size:80px;cursor:pointer;user-select:none;
   filter:drop-shadow(0 6px 10px #0003);
+  transition:left .8s cubic-bezier(.3,0,.2,1),top .8s cubic-bezier(.3,0,.2,1);
 }
+.boss-body.charging{transition:left .18s linear,top .18s linear}
 .boss-body.grounded{animation:bossShake .3s ease-in-out infinite alternate}
 @keyframes bossShake{from{transform:translate(-50%,-50%) rotate(-2deg)}to{transform:translate(-50%,-50%) rotate(2deg)}}
 .boss-body.down{animation:bossDownShake .15s ease-in-out infinite alternate}
@@ -1101,6 +1103,10 @@ function renderBossState(boss) {
   bossEl.classList.toggle('grounded', boss.grounded);
   bossEl.classList.toggle('down', !!boss.allOutActive);
   bossEl.textContent = boss.allOutActive ? '☠️' : (boss.grounded ? '💥' : '🪰');
+  if (typeof boss.x === 'number' && typeof boss.y === 'number') {
+    bossEl.style.left = (boss.x * 100) + '%';
+    bossEl.style.top = (boss.y * 100) + '%';
+  }
 }
 
 function showAllOutBanner() {
@@ -1556,6 +1562,13 @@ function handleMessage(msg) {
     case 'boss_spawn': {
       $('bossBodyEl').hidden = false;
       renderBossState(msg.boss);
+      break;
+    }
+    case 'boss_move': {
+      const bossEl = $('bossBodyEl');
+      bossEl.classList.toggle('charging', !!msg.charge);
+      bossEl.style.left = (msg.x * 100) + '%';
+      bossEl.style.top = (msg.y * 100) + '%';
       break;
     }
     case 'boss_attack_warning': {
