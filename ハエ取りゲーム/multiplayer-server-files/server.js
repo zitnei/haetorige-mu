@@ -10,16 +10,16 @@
 //   npm install
 //   node server.js
 //   (環境変数 PORT で待受ポート変更可。既定 8080)
-
+ 
 const http = require('http');
 const crypto = require('crypto');
 const { WebSocketServer } = require('ws');
-
+ 
 const PORT = process.env.PORT || 8080;
 const MAX_PLAYERS = 20;
 const ROUND_SECONDS = Number(process.env.ROUND_SECONDS) || 120;
 const TICK_MS = 100; // サーバーのゲームループ間隔
-
+ 
 // ---- ハエの種類定義（既存のソロ版と揃えたバランス） ----
 const FLY_TYPES = {
   normal: { points: 1, ttl: 1700, weight: 55 },
@@ -31,15 +31,15 @@ const FLY_TYPES = {
 const FLY_TYPE_TABLE = Object.entries(FLY_TYPES).flatMap(([type, def]) =>
   Array(def.weight).fill(type)
 );
-
+ 
 function pickFlyType() {
   return FLY_TYPE_TABLE[Math.floor(Math.random() * FLY_TYPE_TABLE.length)];
 }
-
+ 
 function genId(prefix) {
   return prefix + '_' + crypto.randomBytes(6).toString('hex');
 }
-
+ 
 function genRoomCode() {
   // 覚えやすい6文字コード（紛らわしい文字は除外）
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -47,7 +47,7 @@ function genRoomCode() {
   for (let i = 0; i < 6; i++) code += chars[Math.floor(Math.random() * chars.length)];
   return code;
 }
-
+ 
 // ---- 部屋の状態 ----
 // rooms: Map<roomCode, Room>
 // Room = {
@@ -57,7 +57,7 @@ function genRoomCode() {
 //   timeLeft, tickTimer, spawnTimer, createdAt
 // }
 const rooms = new Map();
-
+ 
 // ---- 個人ミッション定義（FLY CHAOS PARTY要素） ----
 // 「今やることを1つだけ」表示するための短いミッションプール。
 // 達成したら即座に次のミッションを配る。
@@ -68,11 +68,11 @@ const MISSION_TEMPLATES = [
   { key: 'hit_any_5', label: (n) => `🪰 ハエを${n}匹倒せ！`, count: 5, match: (result) => result === 'hit' },
   { key: 'avoid_decoy', label: () => `🎯 ニセモノを避けて2匹倒せ！`, count: 2, match: (result) => result === 'hit' },
 ];
-
+ 
 function pickMissionTemplate() {
   return MISSION_TEMPLATES[Math.floor(Math.random() * MISSION_TEMPLATES.length)];
 }
-
+ 
 function assignMission(room, player) {
   const tpl = pickMissionTemplate();
   player.mission = {
@@ -85,7 +85,7 @@ function assignMission(room, player) {
   };
   sendTo(player.ws, { type: 'mission_assigned', mission: { label: player.mission.label, progress: 0, target: player.mission.target } });
 }
-
+ 
 function progressMission(room, player, result, flyType) {
   if (!player.mission) return;
   const m = player.mission;
@@ -99,13 +99,13 @@ function progressMission(room, player, result, flyType) {
     assignMission(room, player);
   }
 }
-
+ 
 // ---- TEAM COMBO（全員の行動をまとめたチームコンボ）----
 // 誰かがハエを倒す/部位を壊す/必殺技を使うたびにチームカウンターが増える。
 // 一定時間ヒットがないと自然減衰し、閾値に達するとCHAOS BONUSが発動する。
 const TEAM_COMBO_DECAY_MS = 4000;
 const TEAM_COMBO_BONUS_AT = 15;
-
+ 
 function bumpTeamCombo(room) {
   room.teamCombo = (room.teamCombo || 0) + 1;
   clearTimeout(room.teamComboDecayTimer);
@@ -122,7 +122,7 @@ function bumpTeamCombo(room) {
     }, TEAM_COMBO_DECAY_MS);
   }
 }
-
+ 
 // ---- CHAOS BOX（フィールドにたまに落ちるランダムボーナス）----
 const CHAOS_BOX_EFFECTS = [
   { key: 'score_up', label: '💰 スコア+10！', apply: (room, player) => { player.score += 10; } },
@@ -130,7 +130,7 @@ const CHAOS_BOX_EFFECTS = [
   { key: 'team_combo_up', label: '🌍 チームコンボ+5！', apply: (room, player) => { for (let i = 0; i < 5; i++) bumpTeamCombo(room); } },
   { key: 'mission_clear', label: '🎯 ミッション即達成！', apply: (room, player) => { if (player.mission) { player.score += 3; assignMission(room, player); } } },
 ];
-
+ 
 function spawnChaosBox(room) {
   if (room.state !== 'playing') return;
   const box = {
@@ -147,7 +147,7 @@ function spawnChaosBox(room) {
     }
   }, 6000);
 }
-
+ 
 function scheduleChaosBoxLoop(room) {
   if (room.state !== 'playing') return;
   room.chaosBoxSpawnTimer = setTimeout(() => {
@@ -155,7 +155,7 @@ function scheduleChaosBoxLoop(room) {
     scheduleChaosBoxLoop(room);
   }, 8000 + Math.random() * 6000); // 8〜14秒ごと
 }
-
+ 
 function handleChaosBoxClick(room, playerId, boxId) {
   if (!room.chaosBox || room.chaosBox.id !== boxId) return;
   const player = room.players.get(playerId);
@@ -167,7 +167,7 @@ function handleChaosBoxClick(room, playerId, boxId) {
   broadcast(room, { type: 'chaos_box_opened', id: boxId, by: playerId, byName: player.name, label: effect.label });
   broadcast(room, { type: 'scoreboard', players: publicPlayerList(room) });
 }
-
+ 
 // ---- ソロプレイ・ライブ中継の状態 ----
 // broadcasters: Map<broadcastId, Broadcaster>
 // Broadcaster = {
@@ -176,7 +176,7 @@ function handleChaosBoxClick(room, playerId, boxId) {
 // }
 const broadcasters = new Map();
 const CHEER_THRESHOLD = 5; // 応援ポイントがこの数に達するとブースト発動
-
+ 
 function publicBroadcastList() {
   return Array.from(broadcasters.values()).map((b) => ({
     id: b.id,
@@ -186,14 +186,14 @@ function publicBroadcastList() {
     viewerCount: b.viewers.size,
   }));
 }
-
+ 
 function broadcastToViewers(b, msg) {
   const data = JSON.stringify(msg);
   for (const vws of b.viewers.values()) {
     if (vws.readyState === 1) vws.send(data);
   }
 }
-
+ 
 function broadcastLobbyUpdate() {
   const data = JSON.stringify({ type: 'live_list', broadcasts: publicBroadcastList() });
   // 全接続中クライアント（部屋のプレイヤー＋観戦者＋まだ入室前のロビー中のソケット）に配る
@@ -201,9 +201,9 @@ function broadcastLobbyUpdate() {
     if (ws.readyState === 1) ws.send(data);
   }
 }
-
+ 
 const allSockets = new Set();
-
+ 
 // モード定義: 'coop'（フィールド協力）/ 'raid'（レイドボス）/ 'chaos'（FLY CHAOS PARTY）
 // / 'giant'（巨大ハエ襲来レイド HP1000・5分）/ 'team'（チーム対戦 1v1〜5v5）
 // / 'hunt'（人間狩りモード：自分がハエになって人間から逃げ回る非対称対戦）
@@ -214,7 +214,7 @@ const MODE_ROUND_SECONDS = {
   hunt: 90, // ハエ側の制限時間逃げ切りサバイバル
   fly_night: 180, // 3分固定
 };
-
+ 
 // ==================== FLY NIGHT モード ====================
 // ハエ種類拡張・コンボ倍率・PERFECT判定・KING FLY段階スコア・
 // ハエ・ハンターNPC・ラスト30秒FLY RUSH・簡易エリア分けを持つ独自モード。
@@ -231,7 +231,7 @@ const FLY_NIGHT_TYPE_TABLE = Object.entries(FLY_NIGHT_TYPES).flatMap(([type, def
 function pickFlyNightType() {
   return FLY_NIGHT_TYPE_TABLE[Math.floor(Math.random() * FLY_NIGHT_TYPE_TABLE.length)];
 }
-
+ 
 // 簡易エリア分け：フィールドを4エリアに区切り、エリアごとに出現傾向・危険度を変える
 const FLY_NIGHT_AREAS = [
   { key: 'house', label: '🏚 廃屋', xMin: 0, xMax: 0.5, yMin: 0, yMax: 0.5, spawnBoost: 1.0, rareBoost: 1.0 },
@@ -244,7 +244,7 @@ function pickFlyNightArea() {
   const table = FLY_NIGHT_AREAS.flatMap((a) => Array(Math.round(a.spawnBoost * 10)).fill(a));
   return table[Math.floor(Math.random() * table.length)];
 }
-
+ 
 const KING_FLY_RANK_POINTS = [500, 400, 300, 200, 100]; // 1位〜5位
 const FLY_NIGHT_COMBO_TIERS = [
   { count: 50, mult: 5.0 },
@@ -268,14 +268,14 @@ const HUNTER_SPEED = 0.012; // 1ティックあたりの移動量（正規化座
 const FLY_RUSH_AT_SECONDS = 30; // 残りこの秒数からFLY RUSH演出
 const TEAM_NAMES = ['red', 'blue'];
 const TEAM_LABELS = { red: '🔴 レッドチーム', blue: '🔵 ブルーチーム' };
-
+ 
 // ハエ役の人数配分：少人数のハエ vs 大多数の人間（20人なら約3人がハエ役）
 function flyCountFor(totalPlayers) {
   return Math.max(1, Math.min(4, Math.round(totalPlayers / 7)));
 }
 const HUNT_CATCH_RADIUS = 0.035; // 正規化座標(0..1)での捕獲判定距離
 const HUNT_CATCH_COOLDOWN_MS = 500; // 同じ人間が連続で判定を出さないためのクールダウン
-
+ 
 function createRoom(hostId, hostName, mode, opts) {
   const code = genRoomCode();
   const resolvedMode = VALID_MODES.includes(mode) ? mode : 'coop';
@@ -302,7 +302,7 @@ function createRoom(hostId, hostName, mode, opts) {
   rooms.set(code, room);
   return room;
 }
-
+ 
 function assignTeam(room) {
   // 人数が少ない方のチームに割り振る（バランス自動調整）
   let redCount = 0, blueCount = 0;
@@ -312,7 +312,7 @@ function assignTeam(room) {
   }
   return redCount <= blueCount ? 'red' : 'blue';
 }
-
+ 
 function makePlayer(id, name, room) {
   const player = {
     id, name: (name || '名無し').slice(0, 16), score: 0, combo: 1, lives: 3, connected: true, ws: null,
@@ -330,7 +330,7 @@ function makePlayer(id, name, room) {
   }
   return player;
 }
-
+ 
 // huntモード：ラウンド開始時に少人数をハエ役、残りを人間役に割り振る
 function assignHuntRoles(room) {
   const players = Array.from(room.players.values()).filter((p) => p.connected);
@@ -344,17 +344,17 @@ function assignHuntRoles(room) {
     shuffled[i].huntY = 0.15 + Math.random() * 0.5;
   }
 }
-
+ 
 function publicHuntFlies(room) {
   return Array.from(room.players.values())
     .filter((p) => p.role === 'fly')
     .map((p) => ({ id: p.id, name: p.name, x: p.huntX, y: p.huntY, caught: p.caught }));
 }
-
+ 
 function roomIsFull(room) {
   return room.players.size >= MAX_PLAYERS;
 }
-
+ 
 function broadcast(room, msg) {
   const data = JSON.stringify(msg);
   for (const p of room.players.values()) {
@@ -363,11 +363,11 @@ function broadcast(room, msg) {
     }
   }
 }
-
+ 
 function sendTo(ws, msg) {
   if (ws && ws.readyState === 1) ws.send(JSON.stringify(msg));
 }
-
+ 
 function publicPlayerList(room) {
   return Array.from(room.players.values())
     .sort((a, b) => b.score - a.score)
@@ -377,7 +377,7 @@ function publicPlayerList(room) {
       fnStunned: room.mode === 'fly_night' ? Date.now() < p.fnStunnedUntil : false,
     }));
 }
-
+ 
 function publicFlyList(room) {
   return Array.from(room.flies.values()).map((f) => ({
     id: f.id,
@@ -386,7 +386,7 @@ function publicFlyList(room) {
     y: f.y,
   }));
 }
-
+ 
 function roomSnapshot(room) {
   return {
     type: 'room_state',
@@ -405,7 +405,7 @@ function roomSnapshot(room) {
     flyRushActive: room.mode === 'fly_night' ? room.flyRushActive : null,
   };
 }
-
+ 
 // ---- ゲームループ ----
 function startRound(room) {
   if (room.state === 'playing') return;
@@ -423,7 +423,7 @@ function startRound(room) {
     p.role = null;
     p.caught = false;
   }
-
+ 
   if (room.mode === 'hunt') assignHuntRoles(room);
   if (room.mode === 'fly_night') {
     room.kingFlyRankings = [];
@@ -433,16 +433,16 @@ function startRound(room) {
       p.fnStunnedUntil = 0;
     }
   }
-
+ 
   broadcast(room, { type: 'round_start', timeLeft: room.timeLeft, mode: room.mode, teamSize: room.teamSize || null });
   broadcast(room, roomSnapshot(room));
-
+ 
   if (room.mode === 'chaos') {
     // FLY CHAOS PARTY: 個人ミッション・CHAOS BOXが主役
     for (const p of room.players.values()) assignMission(room, p);
     scheduleChaosBoxLoop(room);
   }
-
+ 
   if (room.mode === 'raid') {
     startRaidBoss(room, 'raid');
   } else if (room.mode === 'giant') {
@@ -456,7 +456,7 @@ function startRound(room) {
   } else {
     spawnLoop(room);
   }
-
+ 
   room.tickTimer = setInterval(() => {
     room.timeLeft -= 1;
     if (room.mode === 'hunt') {
@@ -479,7 +479,7 @@ function startRound(room) {
     broadcast(room, { type: 'tick', timeLeft: room.timeLeft, players: publicPlayerList(room) });
   }, 1000);
 }
-
+ 
 // ==================== レイドボスモード：キングゾンビフライ / 巨大ハエ ====================
 // HP300（raid）または HP1000・5分限定（giant）。
 // 部位（左翼・右翼・頭・尻尾）を個別に破壊していく。
@@ -488,12 +488,12 @@ function startRound(room) {
 // 「全員で叩け！！」の全員総攻撃フェーズに入る。
 const BOSS_PRESETS = {
   raid: {
-    totalHp: 10000,
+    totalHp: 100000,
     parts: {
-      wingL: { label: '左翼', hp: 1000, maxHp: 1000 },
-      wingR: { label: '右翼', hp: 1000, maxHp: 1000 },
-      head: { label: '頭', hp: 1700, maxHp: 1700 },
-      tail: { label: '尻尾', hp: 1300, maxHp: 1300 },
+      wingL: { label: '左翼', hp: 10000, maxHp: 10000 },
+      wingR: { label: '右翼', hp: 10000, maxHp: 10000 },
+      head: { label: '頭', hp: 17000, maxHp: 17000 },
+      tail: { label: '尻尾', hp: 13000, maxHp: 13000 },
     },
     simulHitsNeeded: 3, // 各部位を同時攻撃するのに必要な人数（20人未満でも遊べるよう控えめ）
     simulWindowMs: 2500, // この時間内に集まった同時攻撃をカウント
@@ -501,7 +501,7 @@ const BOSS_PRESETS = {
     moveIntervalMs: [900, 1600], // 激しく動き回る：この範囲でランダムに移動間隔を決める
     moveRadius: 0.32, // 1回の移動でどれだけ大きく飛び回るか（正規化座標）
     chargeChance: 0.35, // まれに素早い突進（チャージ）move演出になる確率
-    damageMult: 12, // HP10000に合わせて1発あたりのダメージを引き上げる倍率
+    damageMult: 120, // HP100000に合わせて1発あたりのダメージを引き上げる倍率
   },
   giant: {
     totalHp: 1000,
@@ -519,11 +519,11 @@ const BOSS_PRESETS = {
     chargeChance: 0.15,
   },
 };
-
+ 
 function bossPreset(room) {
   return BOSS_PRESETS[room.mode] || BOSS_PRESETS.raid;
 }
-
+ 
 function makeBossState(room) {
   const preset = bossPreset(room);
   const parts = {};
@@ -548,7 +548,7 @@ function makeBossState(room) {
     y: 0.35,
   };
 }
-
+ 
 function publicBossState(room) {
   if (!room.boss) return null;
   const b = room.boss;
@@ -571,14 +571,14 @@ function publicBossState(room) {
     y: b.y,
   };
 }
-
+ 
 function startRaidBoss(room) {
   room.boss = makeBossState(room);
   broadcast(room, { type: 'boss_spawn', boss: publicBossState(room) });
   scheduleBossAttack(room);
   scheduleBossMovement(room);
 }
-
+ 
 // ボスがフィールド内を激しく動き回る演出：一定間隔でランダムな位置へジャンプ／突進する。
 // ダウン中（全員総攻撃フェーズ）は動きを止めて、狙いやすくする。
 function scheduleBossMovement(room) {
@@ -600,7 +600,7 @@ function scheduleBossMovement(room) {
     scheduleBossMovement(room);
   }, minMs + Math.random() * (maxMs - minMs));
 }
-
+ 
 function scheduleBossAttack(room) {
   if (room.state !== 'playing' || (room.mode !== 'raid' && room.mode !== 'giant')) return;
   room.bossAttackTimer = setTimeout(() => {
@@ -609,7 +609,7 @@ function scheduleBossAttack(room) {
     scheduleBossAttack(room);
   }, 6000 + Math.random() * 4000);
 }
-
+ 
 // 4部位すべてが「同時破壊状態」になったかチェックし、なったらダウン→全員総攻撃を発動
 function checkAllPartsDownTogether(room) {
   const boss = room.boss;
@@ -636,7 +636,7 @@ function checkAllPartsDownTogether(room) {
     }, preset.allOutDurationMs);
   }
 }
-
+ 
 // プレイヤーがボスの特定部位、または本体を攻撃する
 function handleBossHit(room, playerId, targetPart) {
   if (room.state !== 'playing' || (room.mode !== 'raid' && room.mode !== 'giant') || !room.boss) return;
@@ -645,19 +645,19 @@ function handleBossHit(room, playerId, targetPart) {
   const boss = room.boss;
   if (boss.hp <= 0) return;
   const preset = bossPreset(room);
-
+ 
   const weakSpotActive = boss.grounded && Date.now() < boss.weakSpotUntil;
   const allOutActive = boss.down && Date.now() < boss.allOutUntil;
   let damage = (3 + Math.floor(Math.random() * 4)) * (preset.damageMult || 1); // 基礎ダメージ（モードごとに倍率調整）
   let brokeNow = null;
   let simulTriggered = false;
-
+ 
   if (allOutActive) {
     // ダウン中は全員で本体に大ダメージ（部位指定不要）
     damage *= 4;
   } else if (targetPart && boss.parts[targetPart] && !boss.parts[targetPart].broken) {
     const part = boss.parts[targetPart];
-
+ 
     // ---- 4部位同時叩きギミック：同じ部位を短時間内に必要人数が叩くと大破 ----
     part.simulHits.add(playerId);
     broadcast(room, {
@@ -673,14 +673,14 @@ function handleBossHit(room, playerId, targetPart) {
         broadcast(room, { type: 'boss_simul_progress', targetPart, count: 0, needed: preset.simulHitsNeeded });
       }, preset.simulWindowMs);
     }
-
+ 
     part.hp -= damage;
     if (part.simulHits.size >= preset.simulHitsNeeded && !part.broken) {
       // 必要人数が同時に叩き込んだ→即大破
       part.hp = 0;
       simulTriggered = true;
     }
-
+ 
     if (part.hp <= 0) {
       part.hp = 0;
       part.broken = true;
@@ -700,10 +700,10 @@ function handleBossHit(room, playerId, targetPart) {
   } else if (weakSpotActive) {
     damage *= 3; // 弱点露出中は3倍ダメージ
   }
-
+ 
   boss.hp = Math.max(0, boss.hp - damage);
   player.score += damage;
-
+ 
   broadcast(room, {
     type: 'boss_damage',
     by: playerId,
@@ -717,7 +717,7 @@ function handleBossHit(room, playerId, targetPart) {
     boss: publicBossState(room),
   });
   broadcast(room, { type: 'scoreboard', players: publicPlayerList(room) });
-
+ 
   if (boss.hp <= 0) {
     clearTimeout(room.bossAttackTimer);
     clearTimeout(room.bossDownRecoverTimer);
@@ -726,7 +726,7 @@ function handleBossHit(room, playerId, targetPart) {
     setTimeout(() => endRound(room), 1500);
   }
 }
-
+ 
 function spawnFly(room) {
   if (room.state !== 'playing') return;
   if (room.flies.size >= 14) return; // 20人分でも過密にならないよう上限
@@ -744,7 +744,7 @@ function spawnFly(room) {
   };
   room.flies.set(fly.id, fly);
   broadcast(room, { type: 'fly_spawn', fly: { id: fly.id, type: fly.type, x: fly.x, y: fly.y } });
-
+ 
   setTimeout(() => {
     if (room.state !== 'playing') return;
     const stillThere = room.flies.get(fly.id);
@@ -754,7 +754,7 @@ function spawnFly(room) {
     }
   }, fly.ttl);
 }
-
+ 
 function spawnLoop(room) {
   if (room.state !== 'playing') return;
   spawnFly(room);
@@ -762,7 +762,7 @@ function spawnLoop(room) {
   const delay = Math.max(180, 620 - elapsed * 6);
   room.spawnTimer = setTimeout(() => spawnLoop(room), delay);
 }
-
+ 
 // ==================== FLY NIGHT: ハエ出現・KING FLY・ハンターNPC ====================
 function spawnFlyNightFly(room, forceType) {
   if (room.state !== 'playing') return;
@@ -790,7 +790,7 @@ function spawnFlyNightFly(room, forceType) {
   if (def.announce) {
     broadcast(room, { type: 'golden_fly_announce', flyId: fly.id, x: fly.x, y: fly.y });
   }
-
+ 
   setTimeout(() => {
     if (room.state !== 'playing') return;
     const stillThere = room.flies.get(fly.id);
@@ -800,7 +800,7 @@ function spawnFlyNightFly(room, forceType) {
     }
   }, fly.ttl);
 }
-
+ 
 // KING FLY：終盤に低確率で出現し、複数人が段階スコアを取り合う目玉演出
 function maybeSpawnKingFly(room) {
   if (room.state !== 'playing') return;
@@ -833,7 +833,7 @@ function maybeSpawnKingFly(room) {
     }
   }, fly.ttl);
 }
-
+ 
 function flyNightSpawnLoop(room) {
   if (room.state !== 'playing') return;
   spawnFlyNightFly(room);
@@ -843,7 +843,7 @@ function flyNightSpawnLoop(room) {
   const delay = Math.max(150, (600 - elapsed * 2)) * rushMult;
   room.spawnTimer = setTimeout(() => flyNightSpawnLoop(room), delay);
 }
-
+ 
 // ---- ハエ・ハンターNPC：フィールドを徘徊しプレイヤーに接触するとスタン+コンボ減衰 ----
 function spawnHunters(room) {
   room.hunters = [];
@@ -859,7 +859,7 @@ function spawnHunters(room) {
   }
   broadcast(room, { type: 'hunters_spawn', hunters: room.hunters.map((h) => ({ id: h.id, x: h.x, y: h.y })) });
 }
-
+ 
 function scheduleHunterLoop(room) {
   if (room.state !== 'playing' || room.mode !== 'fly_night') return;
   room.hunterTimer = setTimeout(() => {
@@ -867,12 +867,12 @@ function scheduleHunterLoop(room) {
     scheduleHunterLoop(room);
   }, HUNTER_TICK_MS);
 }
-
+ 
 function tickHunters(room) {
   if (room.state !== 'playing') return;
   const speed = HUNTER_SPEED * (room.flyRushActive ? 1.8 : 1); // ラスト30秒は高速化
   const players = Array.from(room.players.values()).filter((p) => p.connected);
-
+ 
   for (const hunter of room.hunters) {
     // 一番近いプレイヤーを追跡（簡易AI）
     let target = null, bestDist = Infinity;
@@ -887,7 +887,7 @@ function tickHunters(room) {
       hunter.x = Math.max(0, Math.min(1, hunter.x + (dx / len) * speed));
       hunter.y = Math.max(0, Math.min(1, hunter.y + (dy / len) * speed));
     }
-
+ 
     // 接触判定
     for (const p of players) {
       if (Date.now() < p.fnStunnedUntil) continue;
@@ -906,7 +906,7 @@ function tickHunters(room) {
   }
   broadcast(room, { type: 'hunters_update', hunters: room.hunters.map((h) => ({ id: h.id, x: h.x, y: h.y })) });
 }
-
+ 
 function endRound(room) {
   room.state = 'finished';
   clearInterval(room.tickTimer);
@@ -925,7 +925,7 @@ function endRound(room) {
   room.chaosBox = null;
   room.hunters = [];
   room.kingFlySpawned = false;
-
+ 
   let huntWinner; // 'fly' | 'human' | undefined
   if (room.mode === 'hunt') {
     const flies = Array.from(room.players.values()).filter((p) => p.role === 'fly');
@@ -936,7 +936,7 @@ function endRound(room) {
       if (p.role === 'fly' && !p.caught) p.score += 20; // 逃げ切りボーナス
     }
   }
-
+ 
   broadcast(room, {
     type: 'round_end',
     players: publicPlayerList(room),
@@ -946,19 +946,19 @@ function endRound(room) {
     huntWinner,
   });
 }
-
+ 
 function flyNightPersonalStats(room, playerId) {
   const p = room.players.get(playerId);
   if (!p) return null;
   return { kills: p.fnKills, perfects: p.fnPerfects, maxCombo: p.fnMaxCombo, golden: p.fnGolden, misses: p.fnMisses };
 }
-
+ 
 // ==================== 人間狩りモード（hunt）====================
 // 少人数がハエ役になり、マウスでハエキャラを操作してフィールド上を逃げ回る。
 // 残りの人間役プレイヤーは通常のカーソル操作で近づき「捕獲」を狙う。
 // 制限時間内にハエが1匹でも生き残っていればハエ側の勝ち、
 // 全員捕まれば人間側の勝ち（サーバー権威で捕獲判定を行う）。
-
+ 
 // ハエ役自身が自分のハエキャラを動かす
 function handleHuntMove(room, playerId, x, y) {
   if (room.state !== 'playing' || room.mode !== 'hunt') return;
@@ -971,7 +971,7 @@ function handleHuntMove(room, playerId, x, y) {
   player.huntY = ny;
   broadcast(room, { type: 'hunt_fly_move', flyId: player.id, x: nx, y: ny });
 }
-
+ 
 // 人間役が自分のカーソル位置で「捕獲」を試みる（一定距離内のハエを判定）
 function handleHuntCatchAttempt(room, playerId, x, y) {
   if (room.state !== 'playing' || room.mode !== 'hunt') return;
@@ -980,10 +980,10 @@ function handleHuntCatchAttempt(room, playerId, x, y) {
   const now = Date.now();
   if (now - hunter.lastCatchAttemptAt < HUNT_CATCH_COOLDOWN_MS) return;
   hunter.lastCatchAttemptAt = now;
-
+ 
   const hx = Number(x), hy = Number(y);
   if (Number.isNaN(hx) || Number.isNaN(hy)) return;
-
+ 
   for (const fly of room.players.values()) {
     if (fly.role !== 'fly' || fly.caught) continue;
     const dx = fly.huntX - hx, dy = fly.huntY - hy;
@@ -997,7 +997,7 @@ function handleHuntCatchAttempt(room, playerId, x, y) {
     }
   }
 }
-
+ 
 // ---- クリック（ハエを叩く）判定：サーバー権威 ----
 // ---- FLY NIGHT専用の当たり判定：PERFECT判定・コンボ倍率・KING FLY段階スコア ----
 function handleFlyNightHit(room, playerId, flyId, perfect) {
@@ -1006,7 +1006,7 @@ function handleFlyNightHit(room, playerId, flyId, perfect) {
   if (!player) return;
   const fly = room.flies.get(flyId);
   if (!fly) return; // 既に取られた／消滅済み → 空振り扱いにはしない（連打対策）
-
+ 
   if (fly.type === 'king') {
     // KING FLYはHPがあり、複数人が同時に叩ける。命中順を記録して段階スコアへ
     fly.hp -= 1;
@@ -1036,11 +1036,11 @@ function handleFlyNightHit(room, playerId, flyId, perfect) {
     }
     return;
   }
-
+ 
   if (fly.claimed) return;
   fly.claimed = true;
   room.flies.delete(fly.id);
-
+ 
   const def = FLY_NIGHT_TYPES[fly.type];
   const combo = player.combo || 1;
   const mult = comboMultiplierFor(combo);
@@ -1052,13 +1052,13 @@ function handleFlyNightHit(room, playerId, flyId, perfect) {
   player.fnMaxCombo = Math.max(player.fnMaxCombo, player.combo);
   if (perfect) player.fnPerfects += 1;
   if (fly.type === 'golden') player.fnGolden += 1;
-
+ 
   broadcast(room, {
     type: 'fly_result', id: fly.id, by: playerId, result: 'hit', flyType: fly.type, gained, score: player.score,
     perfect: !!perfect, combo: player.combo, comboMult: mult,
   });
   broadcast(room, { type: 'scoreboard', players: publicPlayerList(room) });
-
+ 
   // ゾンビフライを倒すと周囲に小型ハエ(normal)を複数放出
   if (def && def.spawnsOnDeath) {
     for (let i = 0; i < def.spawnsOnDeath; i++) {
@@ -1081,7 +1081,7 @@ function handleFlyNightHit(room, playerId, flyId, perfect) {
     }
   }
 }
-
+ 
 function handleFlyNightMiss(room, playerId) {
   if (room.state !== 'playing' || room.mode !== 'fly_night') return;
   const player = room.players.get(playerId);
@@ -1090,7 +1090,7 @@ function handleFlyNightMiss(room, playerId) {
   player.fnMisses += 1;
   broadcast(room, { type: 'scoreboard', players: publicPlayerList(room) });
 }
-
+ 
 function handleFlyNightMove(room, playerId, x, y) {
   if (room.state !== 'playing' || room.mode !== 'fly_night') return;
   const player = room.players.get(playerId);
@@ -1101,7 +1101,7 @@ function handleFlyNightMove(room, playerId, x, y) {
   player.fnX = nx;
   player.fnY = ny;
 }
-
+ 
 function handleHit(room, playerId, flyId) {
   if (room.state !== 'playing') return;
   const player = room.players.get(playerId);
@@ -1113,7 +1113,7 @@ function handleHit(room, playerId, flyId) {
   }
   fly.claimed = true; // 早押しロック：以降の同時リクエストは全て弾かれる
   room.flies.delete(fly.id);
-
+ 
   if (fly.type === 'decoy') {
     player.lives -= 1;
     player.combo = 1;
@@ -1133,16 +1133,16 @@ function handleHit(room, playerId, flyId) {
       broadcast(room, { type: 'team_score', teamScore: room.teamScore });
     }
   }
-
+ 
   broadcast(room, { type: 'scoreboard', players: publicPlayerList(room) });
-
+ 
   if (player.lives <= 0) {
     // ライフ切れのプレイヤーは以後スコア加算不可（観戦継続は可）
     player.eliminated = true;
     sendTo(player.ws, { type: 'eliminated' });
   }
 }
-
+ 
 // ---- HTTP + WebSocket ----
 const httpServer = http.createServer((req, res) => {
   if (req.url === '/health') {
@@ -1153,17 +1153,17 @@ const httpServer = http.createServer((req, res) => {
   res.writeHead(404);
   res.end('not found');
 });
-
+ 
 const wss = new WebSocketServer({ server: httpServer });
-
+ 
 wss.on('connection', (ws) => {
   let playerId = null;
   let roomCode = null;
   let broadcastId = null; // このソケットが「配信者」として登録したID
   let watchingId = null; // このソケットが「視聴中」の配信ID
-
+ 
   allSockets.add(ws);
-
+ 
   ws.on('message', (raw) => {
     let msg;
     try {
@@ -1171,7 +1171,7 @@ wss.on('connection', (ws) => {
     } catch (e) {
       return;
     }
-
+ 
     if (msg.type === 'create_room') {
       playerId = genId('p');
       const room = createRoom(playerId, msg.name, msg.mode, { teamSize: msg.teamSize });
@@ -1181,7 +1181,7 @@ wss.on('connection', (ws) => {
       broadcast(room, roomSnapshot(room));
       return;
     }
-
+ 
     // ---- ソロプレイのライブ中継 ----
     if (msg.type === 'start_live') {
       if (broadcastId) return; // 二重開始防止
@@ -1198,7 +1198,7 @@ wss.on('connection', (ws) => {
       broadcastLobbyUpdate();
       return;
     }
-
+ 
     if (msg.type === 'live_update') {
       // 配信中のソロプレイヤーからのスコア更新
       if (!broadcastId) return;
@@ -1215,7 +1215,7 @@ wss.on('connection', (ws) => {
       broadcastLobbyUpdate();
       return;
     }
-
+ 
     if (msg.type === 'stop_live') {
       if (!broadcastId) return;
       const b = broadcasters.get(broadcastId);
@@ -1227,12 +1227,12 @@ wss.on('connection', (ws) => {
       broadcastLobbyUpdate();
       return;
     }
-
+ 
     if (msg.type === 'list_live') {
       sendTo(ws, { type: 'live_list', broadcasts: publicBroadcastList() });
       return;
     }
-
+ 
     if (msg.type === 'watch_live') {
       const b = broadcasters.get(msg.broadcastId);
       if (!b) {
@@ -1257,7 +1257,7 @@ wss.on('connection', (ws) => {
       broadcastLobbyUpdate();
       return;
     }
-
+ 
     if (msg.type === 'cheer') {
       // 視聴者から配信者への応援。一定数たまるとブースト通知を配信者に送る
       const b = broadcasters.get(msg.broadcastId);
@@ -1270,7 +1270,7 @@ wss.on('connection', (ws) => {
       }
       return;
     }
-
+ 
     if (msg.type === 'stop_watch') {
       if (watchingId && broadcasters.has(watchingId)) {
         broadcasters.get(watchingId).viewers.delete(ws.__viewerId);
@@ -1278,7 +1278,7 @@ wss.on('connection', (ws) => {
       watchingId = null;
       return;
     }
-
+ 
     if (msg.type === 'join_room') {
       const room = rooms.get((msg.roomCode || '').toUpperCase());
       if (!room) {
@@ -1299,18 +1299,18 @@ wss.on('connection', (ws) => {
       broadcast(room, roomSnapshot(room));
       return;
     }
-
+ 
     // 以降は入室済み前提
     const room = rooms.get(roomCode);
     if (!room || !playerId) return;
-
+ 
     if (msg.type === 'start_round') {
       if (playerId !== room.hostId) return; // ホストのみ開始可能
       if (room.state === 'playing') return;
       startRound(room);
       return;
     }
-
+ 
     if (msg.type === 'hit_fly') {
       if (room.mode === 'fly_night') {
         handleFlyNightHit(room, playerId, msg.flyId, !!msg.perfect);
@@ -1319,7 +1319,7 @@ wss.on('connection', (ws) => {
       }
       return;
     }
-
+ 
     if (msg.type === 'fn_move') {
       handleFlyNightMove(room, playerId, msg.x, msg.y);
       // 人間狩りモードと同様に他プレイヤーへ自分の位置を共有（ハンターの脅威を感じられるように）
@@ -1329,27 +1329,27 @@ wss.on('connection', (ws) => {
       }
       return;
     }
-
+ 
     if (msg.type === 'hit_boss') {
       handleBossHit(room, playerId, msg.targetPart);
       return;
     }
-
+ 
     if (msg.type === 'hit_chaos_box') {
       handleChaosBoxClick(room, playerId, msg.boxId);
       return;
     }
-
+ 
     if (msg.type === 'hunt_move') {
       handleHuntMove(room, playerId, msg.x, msg.y);
       return;
     }
-
+ 
     if (msg.type === 'hunt_catch_attempt') {
       handleHuntCatchAttempt(room, playerId, msg.x, msg.y);
       return;
     }
-
+ 
     if (msg.type === 'cursor_move') {
       const player = room.players.get(playerId);
       if (!player || room.state !== 'playing') return;
@@ -1363,7 +1363,7 @@ wss.on('connection', (ws) => {
       broadcast(room, { type: 'cursor_update', playerId, name: player.name, x, y });
       return;
     }
-
+ 
     if (msg.type === 'miss_click') {
       if (room.mode === 'fly_night') {
         handleFlyNightMiss(room, playerId);
@@ -1377,10 +1377,10 @@ wss.on('connection', (ws) => {
       return;
     }
   });
-
+ 
   ws.on('close', () => {
     allSockets.delete(ws);
-
+ 
     // 配信中だった場合は中継終了を視聴者に通知して片付ける
     if (broadcastId && broadcasters.has(broadcastId)) {
       const b = broadcasters.get(broadcastId);
@@ -1392,7 +1392,7 @@ wss.on('connection', (ws) => {
     if (watchingId && broadcasters.has(watchingId)) {
       broadcasters.get(watchingId).viewers.delete(ws.__viewerId);
     }
-
+ 
     if (!roomCode) return;
     const room = rooms.get(roomCode);
     if (!room) return;
@@ -1401,7 +1401,7 @@ wss.on('connection', (ws) => {
       player.connected = false;
       player.ws = null;
     }
-
+ 
     // ホストが抜けた場合、まだ接続中の誰かに自動でホスト権限を移譲する
     if (room.hostId === playerId) {
       const nextHost = Array.from(room.players.values()).find((p) => p.connected);
@@ -1410,9 +1410,9 @@ wss.on('connection', (ws) => {
         sendTo(nextHost.ws, { type: 'host_transferred' });
       }
     }
-
+ 
     broadcast(room, roomSnapshot(room));
-
+ 
     // 部屋に誰も接続していなければ一定時間後に破棄
     const anyConnected = Array.from(room.players.values()).some((p) => p.connected);
     if (!anyConnected) {
@@ -1427,7 +1427,7 @@ wss.on('connection', (ws) => {
     }
   });
 });
-
+ 
 httpServer.listen(PORT, () => {
   console.log(`ハエ取り20人対戦サーバー起動: ws://0.0.0.0:${PORT}`);
 });
