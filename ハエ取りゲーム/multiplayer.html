@@ -1,0 +1,796 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>スーパー・ハエ取り マルチ対戦</title>
+<style>
+*{box-sizing:border-box}
+body{
+  margin:0; min-height:100vh; min-height:100dvh; display:grid; place-items:center;
+  font-family:system-ui,-apple-system,"Noto Sans JP",sans-serif;
+  background:linear-gradient(#dff7ff,#f6fff1); color:#18344f;
+  padding:10px;
+}
+.wrap{width:min(1000px,96vw)}
+@media(max-width:480px){body{padding:6px}}
+
+.panel{
+  background:#fff;border:2px solid #b9e6f5;border-radius:14px;padding:14px;
+  box-shadow:0 5px 14px #2f7e9d18;margin-bottom:10px;
+}
+h1{font-size:20px;margin:0 0 4px;text-align:center}
+.sub{text-align:center;font-size:13px;opacity:.7;margin-bottom:14px}
+
+/* ---- Lobby screens ---- */
+.lobby-row{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+.lobby-card{
+  flex:1;min-width:240px;background:#f9fdff;border:2px solid #b9e6f5;border-radius:12px;
+  padding:16px;text-align:center;
+}
+.lobby-card h2{font-size:15px;margin:0 0 10px}
+input[type=text]{
+  width:100%;padding:10px;border:2px solid #b9e6f5;border-radius:10px;font-weight:800;
+  font-size:15px;box-sizing:border-box;text-align:center;
+}
+.btn{
+  border:0;border-radius:12px;background:#ffd45a;font-weight:1000;font-size:15px;
+  cursor:pointer;box-shadow:0 4px 0 #d6a927;padding:12px 18px;margin-top:10px;width:100%;
+}
+.btn:active{transform:translateY(2px);box-shadow:0 2px 0 #d6a927}
+.btn.secondary{background:#f9fdff;border:2px solid #b9e6f5;box-shadow:0 4px 0 #b9e6f5}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+#connError{color:#d1416a;font-weight:800;font-size:13px;text-align:center;min-height:18px}
+
+/* ---- Room screen ---- */
+.room-code{
+  font-size:32px;font-weight:1000;letter-spacing:.12em;text-align:center;
+  background:#fff8e1;border:3px dashed #f0b400;border-radius:14px;padding:10px;margin-bottom:10px;
+}
+.player-list{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:10px}
+.player-chip{
+  background:#f9fdff;border:2px solid #b9e6f5;border-radius:999px;padding:6px 14px;font-weight:900;font-size:13px;
+}
+.player-chip.host::before{content:"👑 "}
+.player-chip.disconnected{opacity:.4;text-decoration:line-through}
+
+/* ---- HUD ---- */
+.hud{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px}
+@media(max-width:600px){.hud{grid-template-columns:repeat(2,1fr)}}
+.hud .stat{background:#fff;border:2px solid #b9e6f5;border-radius:14px;padding:8px 10px;text-align:center;font-weight:900}
+.hud .label{display:block;font-size:11px;opacity:.65}
+.hud .value{font-size:21px}
+
+.layout{display:grid;grid-template-columns:1fr 220px;gap:10px}
+@media(max-width:760px){.layout{grid-template-columns:1fr}}
+
+#field{
+  position:relative;width:100%;height:min(62vh,560px);min-height:380px;overflow:hidden;
+  border:4px solid #86d9f1;border-radius:24px;
+  background:
+    radial-gradient(circle at 12% 13%,#fff 0 4%,transparent 4.5%),
+    radial-gradient(circle at 72% 22%,#fff 0 3%,transparent 3.5%),
+    linear-gradient(#dff7ff 0 64%,#c9efa3 64% 100%);
+  box-shadow:0 14px 30px #357a9d24; cursor:crosshair; touch-action:manipulation;
+}
+.fly{
+  position:absolute;width:88px;object-fit:contain;user-select:none;-webkit-user-drag:none;
+  filter:drop-shadow(0 5px 4px #0002);cursor:pointer;
+}
+.fly.normal{width:100px}
+.fly.golden{width:86px;filter:drop-shadow(0 0 10px #ffd700) saturate(1.8) sepia(.35)}
+.fly.decoy{width:80px;opacity:.72;filter:grayscale(.8) contrast(1.1) drop-shadow(0 4px 3px #0002)}
+.fly.ice{width:90px;filter:drop-shadow(0 0 8px #6fd8ff) saturate(1.3) hue-rotate(150deg) brightness(1.15)}
+.fly.bomb{width:92px;filter:drop-shadow(0 0 8px #ff5a5a) saturate(1.4) hue-rotate(-40deg) brightness(.95)}
+.fly.claimed{animation:claimedPop .25s ease-out forwards;pointer-events:none}
+@keyframes claimedPop{to{transform:scale(1.4);opacity:0}}
+
+#msg{position:absolute;inset:0;display:grid;place-items:center;text-align:center;pointer-events:none;font-weight:1000;font-size:clamp(22px,4.5vw,44px);text-shadow:0 3px #fff;padding:12px}
+#toastLayer{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+.toast{
+  position:absolute;font-weight:1000;font-size:15px;opacity:0;
+  animation:toastPop 1s ease-out forwards;text-shadow:0 2px #fff;white-space:nowrap;
+}
+@keyframes toastPop{0%{opacity:0;transform:translateY(0) scale(.7)}20%{opacity:1}100%{opacity:0;transform:translateY(-50px) scale(1.1)}}
+
+.scoreboard{background:#fff;border:2px solid #b9e6f5;border-radius:14px;padding:10px;max-height:min(62vh,560px);overflow-y:auto}
+.scoreboard h3{font-size:14px;margin:0 0 8px;text-align:center}
+.sb-row{
+  display:flex;justify-content:space-between;align-items:center;gap:6px;
+  padding:6px 8px;border-radius:8px;font-weight:800;font-size:13px;margin-bottom:4px;
+}
+.sb-row.me{background:#fff8e1;border:1.5px solid #f0b400}
+.sb-row .rank{opacity:.5;width:1.4em;flex-shrink:0}
+.sb-row .name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sb-row .score{font-variant-numeric:tabular-nums}
+.sb-row.dead{opacity:.4}
+.sb-row.dead .name::after{content:" 💀"}
+
+.help{font-size:12.5px;opacity:.72;text-align:center;margin-top:8px}
+[hidden]{display:none!important}
+
+/* ---- FLY CHAOS PARTY: mission / team combo / chaos box ---- */
+#missionBar{
+  background:#fff3d6;border:2px solid #f0b400;border-radius:14px;padding:10px 14px;margin-bottom:10px;
+  text-align:center;font-weight:1000;font-size:15px;display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;
+}
+#missionBar .missionLabel{font-size:15px}
+#missionBar .missionProgress{font-size:13px;opacity:.75;font-variant-numeric:tabular-nums}
+#missionBar.complete{background:#e3ffe0;border-color:#4caf50;animation:missionPop .4s ease-out}
+@keyframes missionPop{0%{transform:scale(1)}40%{transform:scale(1.06)}100%{transform:scale(1)}}
+
+#teamComboBar{
+  background:#fff;border:2px solid #b9e6f5;border-radius:14px;padding:8px 12px;margin-bottom:10px;
+  text-align:center;font-weight:900;font-size:13px;
+}
+#teamComboBar .barTrack{
+  height:10px;background:#eaf6fb;border-radius:999px;overflow:hidden;margin-top:6px;
+}
+#teamComboBar .barFill{
+  height:100%;background:linear-gradient(90deg,#ffb347,#ff6a6a);width:0%;transition:width .25s ease-out;
+}
+
+.chaos-box{
+  position:absolute;width:60px;height:60px;cursor:pointer;user-select:none;-webkit-user-drag:none;
+  display:grid;place-items:center;font-size:34px;
+  filter:drop-shadow(0 0 10px #ffd700);
+  animation:chaosBoxFloat 1s ease-in-out infinite alternate;
+}
+@keyframes chaosBoxFloat{from{transform:translateY(0)}to{transform:translateY(-8px)}}
+
+#chaosBonusBanner{
+  position:absolute;inset:0;display:grid;place-items:center;pointer-events:none;
+  font-size:clamp(24px,6vw,52px);font-weight:1000;color:#ff6a00;text-shadow:0 3px #fff,0 0 20px #fff;
+  opacity:0;
+}
+#chaosBonusBanner.show{animation:chaosBonusPop 1.2s ease-out forwards}
+@keyframes chaosBonusPop{0%{opacity:0;transform:scale(.6)}25%{opacity:1;transform:scale(1.1)}70%{opacity:1;transform:scale(1)}100%{opacity:0;transform:scale(1)}}
+
+/* ---- 他プレイヤーのカーソル表示 ---- */
+.peer-cursor{
+  position:absolute;pointer-events:none;z-index:50;
+  transform:translate(-4px,-4px);
+  transition:left .08s linear,top .08s linear;
+  will-change:left,top;
+}
+.peer-cursor .cursor-dot{
+  width:18px;height:18px;border-radius:50% 50% 50% 4px;transform:rotate(-45deg);
+  box-shadow:0 2px 4px #0003;border:2px solid #fff;
+}
+.peer-cursor .cursor-name{
+  position:absolute;left:14px;top:-4px;white-space:nowrap;font-size:11px;font-weight:900;
+  background:#fff;border-radius:6px;padding:2px 6px;box-shadow:0 2px 4px #0002;color:#18344f;
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🪰 スーパー・ハエ取り マルチ対戦</h1>
+  <div class="sub">みんなで同じフィールドのハエを取り合う、20人までのリアルタイム早取り対戦</div>
+  <div style="text-align:center;margin:-8px 0 16px">
+    <a href="index.html" style="display:inline-block;text-decoration:none;color:#3a6a8a;font-weight:900;font-size:13px;opacity:.85">← ソロプレイに戻る</a>
+  </div>
+
+  <!-- Connection status -->
+  <div id="connError"></div>
+
+  <!-- ===== Lobby: choose create or join ===== -->
+  <div id="lobbyScreen">
+    <div class="lobby-row">
+      <div class="lobby-card">
+        <h2>🏠 部屋を作る</h2>
+        <input type="text" id="createNameInput" maxlength="16" placeholder="あなたの名前">
+        <button class="btn" id="createRoomBtn">部屋を作成</button>
+      </div>
+      <div class="lobby-card">
+        <h2>🔑 部屋に入る</h2>
+        <input type="text" id="joinCodeInput" maxlength="6" placeholder="部屋コード (例: AB12CD)" style="text-transform:uppercase">
+        <input type="text" id="joinNameInput" maxlength="16" placeholder="あなたの名前" style="margin-top:8px">
+        <button class="btn secondary" id="joinRoomBtn">参加する</button>
+      </div>
+    </div>
+    <div class="panel" id="liveListPanel" style="margin-top:16px">
+      <h3 style="margin:0 0 10px;font-size:15px">📡 中継中のソロプレイ</h3>
+      <div id="liveListEmpty" class="sub">今は誰も中継していません。ソロプレイ画面で「中継開始」を押すとここに表示されます。</div>
+      <div id="liveListItems"></div>
+    </div>
+  </div>
+
+  <!-- ===== Watching screen (視聴中) ===== -->
+  <div id="watchScreen" hidden>
+    <div style="text-align:center;margin-bottom:8px">
+      <button class="btn secondary" id="stopWatchBtn" style="width:auto;padding:8px 18px;font-size:13px">← 中継一覧に戻る</button>
+    </div>
+    <div class="panel" style="text-align:center">
+      <div class="sub" style="margin-bottom:4px">📡 <span id="watchName">-</span> さんのソロプレイを観戦中</div>
+      <div class="hud" style="justify-content:center">
+        <div class="stat"><span class="label">スコア</span><span class="value" id="watchScoreEl">0</span></div>
+        <div class="stat"><span class="label">コンボ</span><span class="value">×<span id="watchComboEl">1</span></span></div>
+      </div>
+      <div id="watchEventLog" style="min-height:120px;max-height:220px;overflow-y:auto;text-align:left;font-size:13px;font-weight:700;background:#f6fbff;border-radius:10px;padding:10px;margin-top:10px"></div>
+      <button class="btn" id="cheerBtn" style="margin-top:14px">📣 応援する</button>
+      <div class="sub" id="cheerHint" style="margin-top:6px">応援ポイントが貯まると相手に得点2倍ブーストが発動します！（<span id="cheerCountEl">0</span>/5）</div>
+    </div>
+  </div>
+
+  <!-- ===== Waiting room ===== -->
+  <div id="waitingScreen" hidden>
+    <div class="panel">
+      <div class="sub" style="margin-bottom:4px">この部屋コードを友達に共有しよう</div>
+      <div class="room-code" id="roomCodeDisplay">------</div>
+      <div id="playerListWaiting" class="player-list"></div>
+      <button class="btn" id="startRoundBtn" hidden>ゲーム開始（ホストのみ）</button>
+      <div class="sub" id="waitingHint" style="margin-top:10px">ホストが開始するのを待っています…</div>
+    </div>
+  </div>
+
+  <!-- ===== Playing screen ===== -->
+  <div id="playScreen" hidden>
+    <div id="missionBar">
+      <span class="missionLabel" id="missionLabelEl">🎯 -</span>
+      <span class="missionProgress" id="missionProgressEl"></span>
+    </div>
+    <div id="teamComboBar">
+      🌍 TEAM COMBO ×<span id="teamComboCountEl">0</span>　<span id="teamComboNeedEl">あと15でCHAOS BONUS!</span>
+      <div class="barTrack"><div class="barFill" id="teamComboFillEl"></div></div>
+    </div>
+    <div class="hud">
+      <div class="stat"><span class="label">のこり</span><span class="value" id="timeLeftEl">120</span>秒</div>
+      <div class="stat"><span class="label">スコア</span><span class="value" id="myScoreEl">0</span></div>
+      <div class="stat"><span class="label">ライフ</span><span class="value" id="myLivesEl">❤️❤️❤️</span></div>
+    </div>
+    <div class="layout">
+      <div id="field">
+        <div id="msg"></div>
+        <div id="toastLayer"></div>
+        <div id="chaosBonusBanner">🔥 CHAOS BONUS!! 🔥</div>
+      </div>
+      <div class="scoreboard">
+        <h3>🏆 現在の順位</h3>
+        <div id="scoreboardList"></div>
+      </div>
+    </div>
+    <div class="help">通常ハエ +1 / 金ハエ +5 / ニセモノを押すとライフ減少 / ❄️氷ハエ・💣爆弾ハエもあり。早い者勝ち！</div>
+  </div>
+
+  <!-- ===== Result screen ===== -->
+  <div id="resultScreen" hidden>
+    <div class="panel">
+      <h2 style="text-align:center;font-size:18px">🎉 ラウンド終了！</h2>
+      <div id="finalScoreboard" class="player-list" style="flex-direction:column;align-items:stretch"></div>
+      <button class="btn" id="playAgainBtn" hidden>もう一度対戦（ホストのみ）</button>
+      <div class="sub" id="resultHint" style="margin-top:10px">ホストが次のラウンドを始めるのを待っています…</div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// 接続先WebSocketサーバーのURL。
+// VPSにデプロイしたら、この1行をご自身の環境に合わせて書き換えてください。
+// 例: 'wss://your-domain.example.com'（HTTPS化した場合。推奨）
+//     'ws://123.45.67.89:8080'（暗号化なし・検証用途向け）
+// ============================================================
+const WS_URL = 'wss://zintei.duckdns.org';
+
+const IMG = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cellipse cx='50' cy='55' rx='22' ry='28' fill='%236b4a35'/%3E%3Ccircle cx='38' cy='30' r='12' fill='%236b4a35'/%3E%3Ccircle cx='62' cy='30' r='12' fill='%236b4a35'/%3E%3Cellipse cx='25' cy='45' rx='18' ry='10' fill='%23bfe8f5' opacity='.8' transform='rotate(-20 25 45)'/%3E%3Cellipse cx='75' cy='45' rx='18' ry='10' fill='%23bfe8f5' opacity='.8' transform='rotate(20 75 45)'/%3E%3Ccircle cx='33' cy='27' r='4' fill='%23fff'/%3E%3Ccircle cx='67' cy='27' r='4' fill='%23fff'/%3E%3Ccircle cx='33' cy='27' r='2' fill='%23111'/%3E%3Ccircle cx='67' cy='27' r='2' fill='%23111'/%3E%3C/svg%3E";
+
+let ws = null;
+let myPlayerId = null;
+let myRoomCode = null;
+let iAmHost = false;
+let myScore = 0, myLives = 3;
+const flyEls = new Map(); // flyId -> element
+
+const $ = (id) => document.getElementById(id);
+const lobbyScreen = $('lobbyScreen');
+const waitingScreen = $('waitingScreen');
+const playScreen = $('playScreen');
+const resultScreen = $('resultScreen');
+const watchScreen = $('watchScreen');
+const connErrorEl = $('connError');
+
+function showScreen(name) {
+  lobbyScreen.hidden = name !== 'lobby';
+  waitingScreen.hidden = name !== 'waiting';
+  playScreen.hidden = name !== 'playing';
+  resultScreen.hidden = name !== 'result';
+  watchScreen.hidden = name !== 'watching';
+}
+
+// ---- ライブ中継の視聴 ----
+let currentWatchId = null;
+let cheerCount = 0;
+
+function renderLiveList(broadcasts) {
+  const itemsEl = $('liveListItems');
+  const emptyEl = $('liveListEmpty');
+  if (!broadcasts || broadcasts.length === 0) {
+    emptyEl.style.display = 'block';
+    itemsEl.innerHTML = '';
+    return;
+  }
+  emptyEl.style.display = 'none';
+  itemsEl.innerHTML = '';
+  broadcasts.forEach((b) => {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border:2px solid #b9e6f5;border-radius:10px;margin-bottom:6px;font-weight:800';
+    row.innerHTML = `<span>📡 ${escapeHtml(b.name)}さん（スコア ${b.score}・👁${b.viewerCount}人視聴中）</span>`;
+    const btn = document.createElement('button');
+    btn.className = 'btn secondary';
+    btn.style.cssText = 'width:auto;padding:6px 14px;font-size:12px';
+    btn.textContent = '観戦する';
+    btn.addEventListener('click', () => {
+      const s = ensureSocket();
+      const doSend = () => send({ type: 'watch_live', broadcastId: b.id });
+      if (s.readyState === WebSocket.OPEN) doSend();
+      else s.addEventListener('open', doSend, { once: true });
+    });
+    row.appendChild(btn);
+    itemsEl.appendChild(row);
+  });
+}
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+function addWatchEvent(text) {
+  const log = $('watchEventLog');
+  const line = document.createElement('div');
+  line.textContent = text;
+  log.appendChild(line);
+  log.scrollTop = log.scrollHeight;
+}
+
+$('stopWatchBtn').addEventListener('click', () => {
+  send({ type: 'stop_watch' });
+  currentWatchId = null;
+  showScreen('lobby');
+});
+
+$('cheerBtn').addEventListener('click', () => {
+  if (!currentWatchId) return;
+  send({ type: 'cheer', broadcastId: currentWatchId });
+});
+
+function ensureSocket() {
+  if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return ws;
+  connErrorEl.textContent = '';
+  ws = new WebSocket(WS_URL);
+  ws.addEventListener('open', () => { connErrorEl.textContent = ''; send({ type: 'list_live' }); });
+  ws.addEventListener('error', () => {
+    connErrorEl.textContent = 'サーバーに接続できませんでした。しばらくしてからもう一度お試しください。';
+  });
+  ws.addEventListener('close', () => {
+    if (!resultScreen.hidden || !playScreen.hidden) {
+      connErrorEl.textContent = 'サーバーとの接続が切れました。ページを再読み込みしてください。';
+    }
+  });
+  ws.addEventListener('message', (ev) => {
+    let msg;
+    try { msg = JSON.parse(ev.data); } catch (e) { return; }
+    handleMessage(msg);
+  });
+  return ws;
+}
+
+function send(obj) {
+  if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
+}
+
+// ---- Lobby actions ----
+$('createRoomBtn').addEventListener('click', () => {
+  const name = $('createNameInput').value.trim() || '名無し';
+  ensureSocket();
+  const s = ensureSocket();
+  const doSend = () => send({ type: 'create_room', name });
+  if (s.readyState === WebSocket.OPEN) doSend();
+  else s.addEventListener('open', doSend, { once: true });
+});
+
+$('joinRoomBtn').addEventListener('click', () => {
+  const code = $('joinCodeInput').value.trim().toUpperCase();
+  const name = $('joinNameInput').value.trim() || '名無し';
+  if (!code) { connErrorEl.textContent = '部屋コードを入力してください'; return; }
+  const s = ensureSocket();
+  const doSend = () => send({ type: 'join_room', roomCode: code, name });
+  if (s.readyState === WebSocket.OPEN) doSend();
+  else s.addEventListener('open', doSend, { once: true });
+});
+
+$('startRoundBtn').addEventListener('click', () => send({ type: 'start_round' }));
+$('playAgainBtn').addEventListener('click', () => send({ type: 'start_round' }));
+
+// ---- Field click handling ----
+const field = $('field');
+field.addEventListener('pointerdown', (e) => {
+  if (e.target === field) send({ type: 'miss_click' });
+});
+
+function spawnToast(text, xPct, yPct) {
+  const layer = $('toastLayer');
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.textContent = text;
+  el.style.left = (xPct * 100) + '%';
+  el.style.top = (yPct * 100) + '%';
+  layer.appendChild(el);
+  setTimeout(() => el.remove(), 1000);
+}
+
+function renderFly(fly) {
+  const el = document.createElement('img');
+  el.src = IMG;
+  el.draggable = false;
+  el.className = 'fly ' + fly.type;
+  el.style.left = (fly.x * 100) + '%';
+  el.style.top = (fly.y * 100) + '%';
+  el.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    send({ type: 'hit_fly', flyId: fly.id });
+  });
+  field.appendChild(el);
+  flyEls.set(fly.id, el);
+}
+
+// ---- 他プレイヤーのカーソル表示 ----
+const peerCursorEls = new Map(); // playerId -> element
+const CURSOR_COLORS = ['#ff6a6a','#ffb347','#6ac0ff','#8ee06a','#c98eff','#ff8ec9','#5ad1c9','#ffd45a'];
+function colorForId(id) {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+  return CURSOR_COLORS[h % CURSOR_COLORS.length];
+}
+
+function upsertPeerCursor(playerId, name, xPct, yPct) {
+  if (playerId === myPlayerId) return; // 自分のカーソルは表示しない
+  let el = peerCursorEls.get(playerId);
+  if (!el) {
+    el = document.createElement('div');
+    el.className = 'peer-cursor';
+    const dot = document.createElement('div');
+    dot.className = 'cursor-dot';
+    dot.style.background = colorForId(playerId);
+    const label = document.createElement('div');
+    label.className = 'cursor-name';
+    label.textContent = name;
+    el.appendChild(dot);
+    el.appendChild(label);
+    field.appendChild(el);
+    peerCursorEls.set(playerId, el);
+  }
+  el.style.left = (xPct * 100) + '%';
+  el.style.top = (yPct * 100) + '%';
+}
+
+function removePeerCursor(playerId) {
+  const el = peerCursorEls.get(playerId);
+  if (!el) return;
+  peerCursorEls.delete(playerId);
+  el.remove();
+}
+
+function clearAllPeerCursors() {
+  peerCursorEls.forEach((el) => el.remove());
+  peerCursorEls.clear();
+}
+
+// 自分のカーソル位置を一定間隔で送信（送りすぎないよう間引く）
+let lastCursorSendAt = 0;
+field.addEventListener('pointermove', (e) => {
+  if (playScreen.hidden) return;
+  const now = performance.now();
+  if (now - lastCursorSendAt < 60) return;
+  lastCursorSendAt = now;
+  const rect = field.getBoundingClientRect();
+  const x = (e.clientX - rect.left) / rect.width;
+  const y = (e.clientY - rect.top) / rect.height;
+  if (x < 0 || x > 1 || y < 0 || y > 1) return;
+  send({ type: 'cursor_move', x, y });
+});
+
+// ---- FLY CHAOS PARTY: mission / team combo / chaos box ----
+const chaosBoxEls = new Map();
+
+function renderMission(label, progress, target) {
+  $('missionLabelEl').textContent = '🎯 ' + label;
+  $('missionProgressEl').textContent = target ? `(${progress}/${target})` : '';
+}
+
+function flashMissionComplete(label) {
+  const bar = $('missionBar');
+  bar.classList.add('complete');
+  setTimeout(() => bar.classList.remove('complete'), 500);
+  spawnToast('✨ ミッション達成！', 0.5, 0.15);
+}
+
+function renderTeamCombo(count, needed) {
+  $('teamComboCountEl').textContent = count;
+  $('teamComboNeedEl').textContent = needed > 0 ? `あと${needed}でCHAOS BONUS!` : 'CHAOS BONUS!!';
+  const pct = Math.min(100, (count / 15) * 100);
+  $('teamComboFillEl').style.width = pct + '%';
+}
+
+function showChaosBonus() {
+  const banner = $('chaosBonusBanner');
+  banner.classList.remove('show');
+  void banner.offsetWidth; // reflow to restart animation
+  banner.classList.add('show');
+}
+
+function renderChaosBox(box) {
+  const el = document.createElement('div');
+  el.className = 'chaos-box';
+  el.textContent = '🎁';
+  el.style.left = (box.x * 100) + '%';
+  el.style.top = (box.y * 100) + '%';
+  el.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    send({ type: 'hit_chaos_box', boxId: box.id });
+  });
+  field.appendChild(el);
+  chaosBoxEls.set(box.id, el);
+}
+
+function removeChaosBox(id) {
+  const el = chaosBoxEls.get(id);
+  if (!el) return;
+  chaosBoxEls.delete(id);
+  el.remove();
+}
+
+function removeFly(id, claimed) {
+  const el = flyEls.get(id);
+  if (!el) return;
+  flyEls.delete(id);
+  if (claimed) {
+    el.classList.add('claimed');
+    setTimeout(() => el.remove(), 260);
+  } else {
+    el.remove();
+  }
+}
+
+function renderPlayerListWaiting(players) {
+  const list = $('playerListWaiting');
+  list.innerHTML = '';
+  players.forEach((p) => {
+    const chip = document.createElement('span');
+    chip.className = 'player-chip' + (p.id === currentHostId ? ' host' : '') + (!p.connected ? ' disconnected' : '');
+    chip.textContent = p.name;
+    list.appendChild(chip);
+  });
+}
+
+let currentHostId = null;
+
+function renderScoreboard(players, targetEl, isFinal) {
+  targetEl.innerHTML = '';
+  players.forEach((p, i) => {
+    const row = document.createElement('div');
+    row.className = 'sb-row' + (p.id === myPlayerId ? ' me' : '') + (p.lives <= 0 ? ' dead' : '');
+    const rank = document.createElement('span');
+    rank.className = 'rank';
+    rank.textContent = (i + 1) + '.';
+    const name = document.createElement('span');
+    name.className = 'name';
+    name.textContent = p.name;
+    const score = document.createElement('span');
+    score.className = 'score';
+    score.textContent = p.score + '点';
+    row.appendChild(rank);
+    row.appendChild(name);
+    row.appendChild(score);
+    targetEl.appendChild(row);
+  });
+  if (isFinal) {
+    // add crown to top scorer
+    const first = targetEl.firstChild;
+    if (first) {
+      const nameSpan = first.querySelector('.name');
+      if (nameSpan) nameSpan.textContent = '🥇 ' + nameSpan.textContent;
+    }
+  }
+}
+
+function updateMyHud(players) {
+  const me = players.find((p) => p.id === myPlayerId);
+  if (!me) return;
+  myScore = me.score;
+  myLives = me.lives;
+  $('myScoreEl').textContent = myScore;
+  $('myLivesEl').textContent = '❤️'.repeat(Math.max(0, myLives)) + '🖤'.repeat(Math.max(0, 3 - myLives));
+  // 切断した／脱落したプレイヤーのカーソルは消す
+  const activeIds = new Set(players.filter((p) => p.connected !== false).map((p) => p.id));
+  peerCursorEls.forEach((el, id) => { if (!activeIds.has(id)) removePeerCursor(id); });
+}
+
+function handleMessage(msg) {
+  switch (msg.type) {
+    case 'joined': {
+      myPlayerId = msg.playerId;
+      myRoomCode = msg.roomCode;
+      iAmHost = msg.isHost;
+      $('roomCodeDisplay').textContent = msg.roomCode;
+      showScreen('waiting');
+      $('startRoundBtn').hidden = !iAmHost;
+      $('waitingHint').hidden = iAmHost;
+      break;
+    }
+    case 'host_transferred': {
+      iAmHost = true;
+      $('startRoundBtn').hidden = false;
+      $('waitingHint').hidden = true;
+      break;
+    }
+    case 'error': {
+      connErrorEl.textContent = msg.message || 'エラーが発生しました';
+      break;
+    }
+    case 'room_state': {
+      currentHostId = msg.hostId;
+      if (msg.hostId === myPlayerId && !iAmHost) {
+        iAmHost = true;
+      }
+      if (waitingScreen.hidden === false || lobbyScreen.hidden === false) {
+        // still in lobby/waiting flow
+      }
+      if (msg.state === 'waiting') {
+        showScreen('waiting');
+        renderPlayerListWaiting(msg.players);
+        $('startRoundBtn').hidden = !iAmHost;
+        $('waitingHint').hidden = iAmHost;
+      }
+      break;
+    }
+    case 'round_start': {
+      showScreen('playing');
+      $('msg').textContent = '';
+      $('timeLeftEl').textContent = msg.timeLeft;
+      flyEls.forEach((el) => el.remove());
+      flyEls.clear();
+      chaosBoxEls.forEach((el) => el.remove());
+      chaosBoxEls.clear();
+      clearAllPeerCursors();
+      myScore = 0; myLives = 3;
+      $('myScoreEl').textContent = 0;
+      $('myLivesEl').textContent = '❤️❤️❤️';
+      renderTeamCombo(0, 15);
+      renderMission('-', 0, 0);
+      break;
+    }
+    case 'tick': {
+      $('timeLeftEl').textContent = msg.timeLeft;
+      updateMyHud(msg.players);
+      renderScoreboard(msg.players, $('scoreboardList'), false);
+      break;
+    }
+    case 'fly_spawn': {
+      renderFly(msg.fly);
+      break;
+    }
+    case 'fly_expire': {
+      removeFly(msg.id, false);
+      break;
+    }
+    case 'fly_result': {
+      const el = flyEls.get(msg.id);
+      let xPct = 0.5, yPct = 0.5;
+      if (el) {
+        xPct = parseFloat(el.style.left) / 100;
+        yPct = parseFloat(el.style.top) / 100;
+      }
+      removeFly(msg.id, true);
+      if (msg.by === myPlayerId) {
+        if (msg.result === 'decoy') {
+          spawnToast('ニセモノ！ -❤️', xPct, yPct);
+        } else {
+          spawnToast('+' + msg.gained, xPct, yPct);
+          myScore = msg.score;
+          $('myScoreEl').textContent = myScore;
+        }
+      }
+      break;
+    }
+    case 'scoreboard': {
+      updateMyHud(msg.players);
+      renderScoreboard(msg.players, $('scoreboardList'), false);
+      break;
+    }
+    case 'eliminated': {
+      spawnToast('ライフが尽きました…観戦モード', 0.5, 0.5);
+      break;
+    }
+    case 'round_end': {
+      clearAllPeerCursors();
+      showScreen('result');
+      renderScoreboard(msg.players, $('finalScoreboard'), true);
+      $('playAgainBtn').hidden = !iAmHost;
+      $('resultHint').hidden = iAmHost;
+      break;
+    }
+    case 'live_list': {
+      renderLiveList(msg.broadcasts);
+      break;
+    }
+    case 'watch_started': {
+      currentWatchId = msg.broadcastId;
+      cheerCount = 0;
+      $('watchName').textContent = msg.name;
+      $('watchScoreEl').textContent = msg.score;
+      $('watchComboEl').textContent = msg.combo;
+      $('watchEventLog').innerHTML = '';
+      $('cheerCountEl').textContent = '0';
+      showScreen('watching');
+      break;
+    }
+    case 'live_state': {
+      $('watchScoreEl').textContent = msg.score;
+      $('watchComboEl').textContent = msg.combo;
+      if (msg.event) {
+        if (msg.event.kind === 'decoy') addWatchEvent('😱 ニセモノを叩いてしまった！');
+        else if (msg.event.kind === 'hit') {
+          const label = msg.event.flyType === 'golden' ? '✨金ハエ' : msg.event.flyType === 'boss' ? '💥ボス' : msg.event.flyType === 'ice' ? '❄️氷ハエ' : msg.event.flyType === 'bomb' ? '💣爆弾ハエ' : 'ハエ';
+          addWatchEvent(`${label}ゲット！ +${msg.event.gained}`);
+        }
+      }
+      break;
+    }
+    case 'cheer_received': {
+      cheerCount = msg.total;
+      $('cheerCountEl').textContent = String(cheerCount);
+      break;
+    }
+    case 'live_ended': {
+      addWatchEvent('📡 中継が終了しました');
+      setTimeout(() => { if (!watchScreen.hidden) showScreen('lobby'); }, 1500);
+      break;
+    }
+    case 'mission_assigned': {
+      renderMission(msg.mission.label, msg.mission.progress, msg.mission.target);
+      break;
+    }
+    case 'mission_progress': {
+      const label = $('missionLabelEl').textContent.replace(/^🎯 /, '');
+      renderMission(label, msg.progress, msg.target);
+      break;
+    }
+    case 'mission_complete': {
+      flashMissionComplete(msg.label);
+      break;
+    }
+    case 'team_combo': {
+      renderTeamCombo(msg.count, msg.needed);
+      break;
+    }
+    case 'chaos_bonus': {
+      showChaosBonus();
+      spawnToast('🔥 CHAOS BONUS! 全員+5点！', 0.5, 0.4);
+      break;
+    }
+    case 'chaos_box_spawn': {
+      renderChaosBox(msg.box);
+      break;
+    }
+    case 'chaos_box_expire': {
+      removeChaosBox(msg.id);
+      break;
+    }
+    case 'chaos_box_opened': {
+      removeChaosBox(msg.id);
+      spawnToast((msg.byName || '?') + ': ' + msg.label, 0.5, 0.3);
+      break;
+    }
+    case 'cursor_update': {
+      upsertPeerCursor(msg.playerId, msg.name, msg.x, msg.y);
+      break;
+    }
+  }
+}
+
+// 起動時に中継一覧を先に取得しておく（ロビーで待っている間から見られるように）
+ensureSocket();
+</script>
+</body>
+</html>

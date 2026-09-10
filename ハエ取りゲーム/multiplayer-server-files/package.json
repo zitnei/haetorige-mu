@@ -1,0 +1,12 @@
+{
+  "name": "haetori-multiplayer-server",
+  "version": "1.0.0",
+  "description": "スーパー・ハエ取り 20人対戦用 WebSocketサーバー（サーバー権威方式）",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "ws": "^8.21.3"
+  }
+}
