@@ -412,6 +412,10 @@ input[type=text]{
       </div>
       <div class="lobby-card">
         <h2>🔑 部屋に入る</h2>
+        <input type="text" id="quickJoinNameInput" maxlength="16" placeholder="あなたの名前">
+        <button class="btn" id="quickJoinBtn" style="margin-top:8px">⚡ 今すぐ参加する（部屋コード不要）</button>
+        <div class="sub" id="quickJoinHint" style="margin-top:4px;min-height:16px"></div>
+        <div class="sub" style="margin:14px 0 6px;text-align:center">─ または部屋コードを指定 ─</div>
         <input type="text" id="joinCodeInput" maxlength="6" placeholder="部屋コード (例: AB12CD)" style="text-transform:uppercase">
         <input type="text" id="joinNameInput" maxlength="16" placeholder="あなたの名前" style="margin-top:8px">
         <button class="btn secondary" id="joinRoomBtn">参加する</button>
@@ -447,6 +451,8 @@ input[type=text]{
       <div class="sub" style="margin-bottom:4px" id="waitingModeLabel">🪰 フィールド協力モード</div>
       <div class="sub" style="margin-bottom:4px">この部屋コードを友達に共有しよう</div>
       <div class="room-code" id="roomCodeDisplay">------</div>
+      <button class="btn secondary" id="copyInviteLinkBtn" style="margin-top:8px">🔗 招待リンクをコピー</button>
+      <div class="sub" id="copyInviteHint" style="margin-top:4px;min-height:16px"></div>
       <div id="playerListWaiting" class="player-list"></div>
       <button class="btn" id="startRoundBtn" hidden>ゲーム開始（ホストのみ）</button>
       <div class="sub" id="waitingHint" style="margin-top:10px">ホストが開始するのを待っています…</div>
@@ -762,8 +768,56 @@ $('joinRoomBtn').addEventListener('click', () => {
   else s.addEventListener('open', doSend, { once: true });
 });
 
+// ---- 部屋コード不要のクイック参加：今開いている部屋の中から自動で1つに入る ----
+$('quickJoinBtn').addEventListener('click', () => {
+  const name = $('quickJoinNameInput').value.trim() || '名無し';
+  const hint = $('quickJoinHint');
+  hint.style.color = '';
+  hint.textContent = '参加できる部屋を探しています…';
+  const s = ensureSocket();
+  const doSend = () => send({ type: 'quick_join', name });
+  if (s.readyState === WebSocket.OPEN) doSend();
+  else s.addEventListener('open', doSend, { once: true });
+});
+// 名前欄でEnterキーを押すだけでも自動参加できるようにする（ボタンを別途押さなくてよい）
+$('quickJoinNameInput').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') $('quickJoinBtn').click();
+});
+
 $('startRoundBtn').addEventListener('click', () => send({ type: 'start_round' }));
 $('playAgainBtn').addEventListener('click', () => send({ type: 'start_round' }));
+
+// ---- 招待リンク：?room=コード 付きでアクセスされたら、部屋コード欄に自動入力する ----
+(() => {
+  const params = new URLSearchParams(window.location.search);
+  const roomFromUrl = (params.get('room') || '').trim().toUpperCase();
+  if (roomFromUrl) {
+    const joinInput = $('joinCodeInput');
+    joinInput.value = roomFromUrl;
+    const joinNameInput = $('joinNameInput');
+    setTimeout(() => joinNameInput.focus(), 50);
+    joinNameInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') $('joinRoomBtn').click();
+    });
+    const hint = document.createElement('div');
+    hint.className = 'sub';
+    hint.style.cssText = 'margin-top:6px;font-weight:900;color:#2b8a3e';
+    hint.textContent = `招待リンクから部屋コード「${roomFromUrl}」を自動入力しました。名前を入れて「参加する」を押してください！`;
+    joinInput.insertAdjacentElement('afterend', hint);
+  }
+})();
+
+$('copyInviteLinkBtn').addEventListener('click', async () => {
+  if (!myRoomCode) return;
+  const url = `${window.location.origin}${window.location.pathname}?room=${myRoomCode}`;
+  const hint = $('copyInviteHint');
+  try {
+    await navigator.clipboard.writeText(url);
+    hint.textContent = 'コピーしました！このリンクをLINEなどで送るだけで、友達が自動で部屋コード入りの画面を開けます。';
+  } catch (e) {
+    hint.textContent = `コピーに失敗しました。このリンクを手動で送ってください: ${url}`;
+  }
+});
 
 // ---- Field click handling ----
 const field = $('field');
@@ -1224,6 +1278,8 @@ function handleMessage(msg) {
     }
     case 'error': {
       connErrorEl.textContent = msg.message || 'エラーが発生しました';
+      const qjHint = document.getElementById('quickJoinHint');
+      if (qjHint) { qjHint.style.color = '#e03131'; qjHint.textContent = msg.message || 'エラーが発生しました'; }
       break;
     }
     case 'room_state': {
