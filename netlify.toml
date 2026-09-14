@@ -1,0 +1,4 @@
+# Netlify: GitHub連携時の公開設定（ビルド不要の静的サイト）
+[build]
+  publish = "ハエ取りゲーム"
+  command = ""
