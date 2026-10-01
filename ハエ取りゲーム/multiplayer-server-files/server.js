@@ -316,7 +316,7 @@ function assignTeam(room) {
 function makePlayer(id, name, room) {
   const player = {
     id, name: (name || '名無し').slice(0, 16), score: 0, combo: 1, lives: 3, connected: true, ws: null,
-    mission: null, lastCursorSentAt: 0, team: null,
+    mission: null, lastCursorSentAt: 0, lastTapSentAt: 0, team: null,
     role: null, // 'fly' | 'human'（huntモード用）
     huntX: 0.5, huntY: 0.5, // ハエ役プレイヤー自身の位置（huntモード用）
     caught: false,
@@ -1385,6 +1385,20 @@ wss.on('connection', (ws) => {
       if (player.lastCursorSentAt && now - player.lastCursorSentAt < 40) return;
       player.lastCursorSentAt = now;
       broadcast(room, { type: 'cursor_update', playerId, name: player.name, x, y });
+      return;
+    }
+
+    // スマホでタップした位置を全員に知らせる（名前と色付きで表示される）
+    if (msg.type === 'tap') {
+      const player = room.players.get(playerId);
+      if (!player || room.state !== 'playing') return;
+      const x = Math.max(0, Math.min(1, Number(msg.x)));
+      const y = Math.max(0, Math.min(1, Number(msg.y)));
+      if (Number.isNaN(x) || Number.isNaN(y)) return;
+      const now = Date.now();
+      if (player.lastTapSentAt && now - player.lastTapSentAt < 60) return;
+      player.lastTapSentAt = now;
+      broadcast(room, { type: 'tap_update', playerId, name: player.name, x, y });
       return;
     }
 

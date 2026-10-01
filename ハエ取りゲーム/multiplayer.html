@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <title>スーパー・ハエ取り マルチ対戦</title>
 <style>
 *{box-sizing:border-box}
@@ -11,7 +11,13 @@ body{
   font-family:system-ui,-apple-system,"Noto Sans JP",sans-serif;
   background:linear-gradient(#dff7ff,#f6fff1); color:#18344f;
   padding:10px;
+  /* スマホ：長押しの選択・タップ時の灰色ハイライト・引っ張って更新を抑止 */
+  -webkit-tap-highlight-color:transparent;
+  -webkit-user-select:none; user-select:none;
+  overscroll-behavior:none;
 }
+/* 名前などの入力欄だけは文字選択できるように戻す */
+input,textarea{-webkit-user-select:text;user-select:text}
 .wrap{width:min(1000px,96vw)}
 @media(max-width:480px){body{padding:6px}}
 
@@ -71,7 +77,9 @@ input[type=text]{
     radial-gradient(circle at 12% 13%,#fff 0 4%,transparent 4.5%),
     radial-gradient(circle at 72% 22%,#fff 0 3%,transparent 3.5%),
     linear-gradient(#dff7ff 0 64%,#c9efa3 64% 100%);
-  box-shadow:0 14px 30px #357a9d24; cursor:crosshair; touch-action:manipulation;
+  box-shadow:0 14px 30px #357a9d24; cursor:crosshair;
+  /* スマホ：タップでスクロール・ダブルタップ拡大が起きないように */
+  touch-action:none;
 }
 .fly{
   position:absolute;width:88px;object-fit:contain;user-select:none;-webkit-user-drag:none;
@@ -165,6 +173,40 @@ input[type=text]{
 .peer-cursor .cursor-name{
   position:absolute;left:14px;top:-4px;white-space:nowrap;font-size:11px;font-weight:900;
   background:#fff;border-radius:6px;padding:2px 6px;box-shadow:0 2px 4px #0002;color:#18344f;
+}
+
+/* ---- タップした場所に名前と色を出す（スマホの人の位置が全員に見える） ---- */
+.tap-mark{
+  position:absolute;pointer-events:none;z-index:55;transform:translate(-50%,-50%);
+  animation:tapMarkFade 1.3s ease-out forwards;
+}
+.tap-mark .tap-ring{
+  position:absolute;left:50%;top:50%;width:46px;height:46px;margin:-23px 0 0 -23px;
+  border-radius:50%;border:4px solid var(--c,#ff6a6a);
+  animation:tapRingPop .5s ease-out forwards;
+}
+.tap-mark .tap-name{
+  position:absolute;left:50%;top:20px;transform:translateX(-50%);white-space:nowrap;
+  font-size:12px;font-weight:1000;color:#fff;background:var(--c,#ff6a6a);
+  border:2px solid #fff;border-radius:9px;padding:2px 8px;box-shadow:0 2px 5px #0003;
+}
+.tap-mark.mine .tap-name::after{content:'（自分）';font-size:10px;opacity:.85;margin-left:3px}
+@keyframes tapRingPop{0%{transform:scale(.35);opacity:1}100%{transform:scale(1.2);opacity:0}}
+@keyframes tapMarkFade{0%,65%{opacity:1}100%{opacity:0}}
+
+/* ---- スマホ：ハエを少し小さくしてフィールドを広く使う ---- */
+@media(max-width:760px){
+  #field{height:min(58vh,520px);min-height:340px}
+  .fly{width:66px}
+  .fly.normal{width:74px}
+  .fly.golden{width:64px}
+  .fly.decoy{width:60px}
+  .fly.ice{width:68px}
+  .fly.bomb{width:70px}
+  .fly.speed{width:58px}
+  .fly.zombie{width:78px}
+  .fly.stealth{width:68px}
+  .tap-mark .tap-name{font-size:11px}
 }
 
 /* ---- モード選択 ---- */
@@ -836,6 +878,43 @@ field.addEventListener('pointerdown', (e) => {
   if (e.target === field) send({ type: 'miss_click' });
 });
 
+// ---- タップした場所に名前と色を表示（スマホ・タブレット） ----
+// フィールド内のどこをタップしても拾えるようキャプチャ段階で受ける
+// （ハエやボスなど子要素の処理に邪魔されない）
+let lastTapSendAt = 0;
+field.addEventListener('pointerdown', (e) => {
+  if (e.pointerType !== 'touch' && e.pointerType !== 'pen') return; // PCのマウスはカーソル表示があるので不要
+  if (playScreen.hidden) return;
+  const rect = field.getBoundingClientRect();
+  const x = (e.clientX - rect.left) / rect.width;
+  const y = (e.clientY - rect.top) / rect.height;
+  if (x < 0 || x > 1 || y < 0 || y > 1) return;
+  spawnTapMark(myPlayerId, playerNameMap.get(myPlayerId) || 'あなた', x, y);
+  const now = performance.now();
+  if (now - lastTapSendAt < 80) return; // 連打しても送りすぎない
+  lastTapSendAt = now;
+  send({ type: 'tap', x, y });
+}, true);
+
+function spawnTapMark(playerId, name, xPct, yPct) {
+  const team = playerTeamMap.get(playerId) || null;
+  const color = team === 'red' ? '#d9534f' : team === 'blue' ? '#3a6ad9' : colorForId(playerId || '');
+  const el = document.createElement('div');
+  el.className = 'tap-mark' + (playerId === myPlayerId ? ' mine' : '');
+  el.style.setProperty('--c', color);
+  el.style.left = (xPct * 100) + '%';
+  el.style.top = (yPct * 100) + '%';
+  const ring = document.createElement('div');
+  ring.className = 'tap-ring';
+  const label = document.createElement('div');
+  label.className = 'tap-name';
+  label.textContent = (team === 'red' ? '🔴 ' : team === 'blue' ? '🔵 ' : '') + (name || '?');
+  el.appendChild(ring);
+  el.appendChild(label);
+  field.appendChild(el);
+  setTimeout(() => el.remove(), 1300);
+}
+
 function spawnCatchRing(xPct, yPct) {
   const ring = document.createElement('div');
   ring.className = 'catch-ring';
@@ -1209,8 +1288,12 @@ function renderPlayerListWaiting(players) {
 
 let currentHostId = null;
 const playerTeamMap = new Map(); // playerId -> team, kept fresh from scoreboard/tick/room_state
+const playerNameMap = new Map(); // playerId -> name（タップ表示などで使う）
 function trackPlayerTeams(players) {
-  players.forEach((p) => { if (p.team) playerTeamMap.set(p.id, p.team); });
+  players.forEach((p) => {
+    if (p.team) playerTeamMap.set(p.id, p.team);
+    if (p.name) playerNameMap.set(p.id, p.name);
+  });
 }
 
 function renderScoreboard(players, targetEl, isFinal) {
@@ -1585,6 +1668,11 @@ function handleMessage(msg) {
     case 'chaos_box_opened': {
       removeChaosBox(msg.id);
       spawnToast((msg.byName || '?') + ': ' + msg.label, 0.5, 0.3);
+      break;
+    }
+    case 'tap_update': {
+      if (msg.playerId === myPlayerId) break; // 自分の分はタップした瞬間に出している
+      spawnTapMark(msg.playerId, msg.name, msg.x, msg.y);
       break;
     }
     case 'cursor_update': {

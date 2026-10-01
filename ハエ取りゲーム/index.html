@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <title>スーパー・ハエ取り</title>
 <style>
 *{box-sizing:border-box}
@@ -11,7 +11,12 @@ body{
   font-family:system-ui,-apple-system,"Noto Sans JP",sans-serif;
   background:linear-gradient(#dff7ff,#f6fff1); color:#18344f;
   padding:10px;
+  /* スマホ：長押しの選択・タップ時の灰色ハイライト・引っ張って更新を抑止 */
+  -webkit-tap-highlight-color:transparent;
+  -webkit-user-select:none; user-select:none;
+  overscroll-behavior:none;
 }
+input,textarea{-webkit-user-select:text;user-select:text}
 .wrap{width:min(960px,96vw)}
 @media(max-width:480px){body{padding:6px}}
 .hud{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-bottom:10px}
@@ -36,7 +41,7 @@ body{
     radial-gradient(circle at 12% 13%,#fff 0 4%,transparent 4.5%),
     radial-gradient(circle at 72% 22%,#fff 0 3%,transparent 3.5%),
     linear-gradient(#dff7ff 0 64%,#c9efa3 64% 100%);
-  box-shadow:0 14px 30px #357a9d24; cursor:crosshair; touch-action:manipulation;
+  box-shadow:0 14px 30px #357a9d24; cursor:crosshair; touch-action:none;
 }
 .fly{
   position:absolute;object-fit:contain;user-select:none;-webkit-user-drag:none;
