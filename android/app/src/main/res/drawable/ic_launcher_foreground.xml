@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- アプリアイコンのハエ（ゲーム中のハエと同じ形） -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group android:translateX="27" android:translateY="27" android:scaleX="0.54" android:scaleY="0.54">
+        <!-- 羽 -->
+        <path android:fillColor="#BFE8F5" android:fillAlpha="0.85"
+            android:pathData="M25,45 m-18,0 a18,10 0 1,0 36,0 a18,10 0 1,0 -36,0" />
+        <path android:fillColor="#BFE8F5" android:fillAlpha="0.85"
+            android:pathData="M75,45 m-18,0 a18,10 0 1,0 36,0 a18,10 0 1,0 -36,0" />
+        <!-- 胴体 -->
+        <path android:fillColor="#6B4A35"
+            android:pathData="M50,55 m-22,0 a22,28 0 1,0 44,0 a22,28 0 1,0 -44,0" />
+        <!-- 目 -->
+        <path android:fillColor="#6B4A35"
+            android:pathData="M38,30 m-12,0 a12,12 0 1,0 24,0 a12,12 0 1,0 -24,0" />
+        <path android:fillColor="#6B4A35"
+            android:pathData="M62,30 m-12,0 a12,12 0 1,0 24,0 a12,12 0 1,0 -24,0" />
+        <path android:fillColor="#FFFFFF"
+            android:pathData="M33,27 m-4,0 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0" />
+        <path android:fillColor="#FFFFFF"
+            android:pathData="M67,27 m-4,0 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0" />
+        <path android:fillColor="#111111"
+            android:pathData="M33,27 m-2,0 a2,2 0 1,0 4,0 a2,2 0 1,0 -4,0" />
+        <path android:fillColor="#111111"
+            android:pathData="M67,27 m-2,0 a2,2 0 1,0 4,0 a2,2 0 1,0 -4,0" />
+    </group>
+</vector>
