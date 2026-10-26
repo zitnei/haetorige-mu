@@ -4,13 +4,25 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <title>スーパー・ハエ取り マルチ対戦</title>
+<!-- iPhone・Androidで「ホーム画面に追加」するとアプリのように開ける設定 -->
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#dff7ff">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="ハエ取り">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<link rel="icon" href="icons/icon-192.png">
 <style>
 *{box-sizing:border-box}
 body{
-  margin:0; min-height:100vh; min-height:100dvh; display:grid; place-items:center;
+  margin:0; min-height:100vh; min-height:-webkit-fill-available; min-height:100dvh;
+  display:grid; place-items:center;
   font-family:system-ui,-apple-system,"Noto Sans JP",sans-serif;
   background:linear-gradient(#dff7ff,#f6fff1); color:#18344f;
-  padding:10px;
+  /* iPhoneのノッチ・ホームバーに文字が隠れないようにする */
+  padding:max(10px,env(safe-area-inset-top)) max(10px,env(safe-area-inset-right))
+          max(10px,env(safe-area-inset-bottom)) max(10px,env(safe-area-inset-left));
   /* スマホ：長押しの選択・タップ時の灰色ハイライト・引っ張って更新を抑止 */
   -webkit-tap-highlight-color:transparent;
   -webkit-user-select:none; user-select:none;
@@ -19,7 +31,7 @@ body{
 /* 名前などの入力欄だけは文字選択できるように戻す */
 input,textarea{-webkit-user-select:text;user-select:text}
 .wrap{width:min(1000px,96vw)}
-@media(max-width:480px){body{padding:6px}}
+@media(max-width:480px){body{padding:max(6px,env(safe-area-inset-top)) max(6px,env(safe-area-inset-right)) max(6px,env(safe-area-inset-bottom)) max(6px,env(safe-area-inset-left))}}
 
 .panel{
   background:#fff;border:2px solid #b9e6f5;border-radius:14px;padding:14px;
@@ -592,7 +604,17 @@ input[type=text]{
 // 例: 'wss://your-domain.example.com'（HTTPS化した場合。推奨）
 //     'ws://123.45.67.89:8080'（暗号化なし・検証用途向け）
 // ============================================================
-const WS_URL = 'wss://zintei.duckdns.org';
+// ふだんはVPSのサーバーにつなぐ。
+// 手元のPCで試すときだけ ?ws=ws://localhost:8080 のように接続先を変えられる
+// （公開中のページでは無効。自分のPC上で開いたときだけ効く）
+const WS_URL = (() => {
+  const DEFAULT_URL = 'wss://zintei.duckdns.org';
+  const localHost = ['localhost', '127.0.0.1', '[::1]', ''].includes(location.hostname) ||
+    location.hostname.endsWith('.localhost');
+  if (!localHost) return DEFAULT_URL;
+  const q = new URLSearchParams(location.search).get('ws');
+  return (q && /^wss?:\/\//.test(q)) ? q : DEFAULT_URL;
+})();
 
 // ---- BGM・効果音（ソロ版と共通の音源） ----
 const soundToggleBtn = document.getElementById('soundToggle');
@@ -639,6 +661,29 @@ function playNamedSound(id) {
   clone.volume = Number(seVolumeInput.value) / 100;
   clone.play().catch(() => {});
 }
+
+// iPhone（Safari）は画面を触るまで音を鳴らせない。
+// マルチ対戦の開始はサーバーからの合図なので、最初に触れた時点で音を使える状態にしておく。
+let audioUnlocked = false;
+function unlockAudio() {
+  if (audioUnlocked) return;
+  audioUnlocked = true;
+  [...bgmTracks, ...gentleSounds, ...strongSounds].forEach((a) => {
+    if (!a) return;
+    const wasMuted = a.muted;
+    a.muted = true;
+    const p = a.play();
+    if (p && p.then) {
+      p.then(() => { a.pause(); a.currentTime = 0; a.muted = wasMuted; })
+       .catch(() => { a.muted = wasMuted; });
+    } else {
+      a.muted = wasMuted;
+    }
+  });
+}
+['pointerdown', 'touchstart', 'click'].forEach((ev) => {
+  window.addEventListener(ev, unlockAudio, { once: true, passive: true });
+});
 
 function playRandomBgm() {
   stopBgm();
@@ -1744,6 +1789,38 @@ function handleMessage(msg) {
 
 // 起動時に中継一覧を先に取得しておく（ロビーで待っている間から見られるように）
 ensureSocket();
+</script>
+<script>
+// ---- ホーム画面に追加（PWA）対応：iPhone・Androidの両方 ----
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  });
+}
+// iPhoneのSafariには「インストール」ボタンが無いので、追加の仕方を一度だけ案内する
+(function () {
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+  const standalone = window.navigator.standalone === true ||
+    window.matchMedia('(display-mode: standalone)').matches;
+  if (!isIOS || standalone) return;
+  try { if (localStorage.getItem('haetori_ios_hint') === 'done') return; } catch (e) {}
+  const bar = document.createElement('div');
+  bar.setAttribute('role', 'note');
+  bar.style.cssText = 'position:fixed;left:8px;right:8px;bottom:calc(8px + env(safe-area-inset-bottom));' +
+    'background:#fff;border:2px solid #b9e6f5;border-radius:14px;padding:10px 12px;z-index:9999;' +
+    'font-size:13px;font-weight:800;color:#18344f;box-shadow:0 6px 18px #2f7e9d33;display:flex;gap:10px;align-items:center';
+  bar.innerHTML = '<span style="flex:1">共有ボタン <b>⬆️</b> →「ホーム画面に追加」でアプリのように遊べます</span>';
+  const close = document.createElement('button');
+  close.type = 'button';
+  close.textContent = '閉じる';
+  close.style.cssText = 'border:0;border-radius:10px;background:#ffd45a;font-weight:1000;padding:8px 12px;color:#18344f';
+  close.addEventListener('click', () => {
+    bar.remove();
+    try { localStorage.setItem('haetori_ios_hint', 'done'); } catch (e) {}
+  });
+  bar.appendChild(close);
+  window.addEventListener('load', () => document.body.appendChild(bar));
+})();
 </script>
 </body>
 </html>
